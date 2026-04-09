@@ -290,7 +290,10 @@ def authentify() -> bool:
                     ('success' in res and res['success'] and 'result' in res)
                     or 'access_token' in res
                 ):
-                    return _apply_auth_response(res)
+                    authenticated = _apply_auth_response(res)
+                    if authenticated:
+                        config.connected = True
+                    return authenticated
                 _log.debug('-> authentication failed')
                 if 'error' in res:
                     aw.sendmessage(res['error'])
@@ -346,7 +349,15 @@ def refreshSession() -> bool:
         if not response.headers['content-type'].strip().startswith('application/json'):
             clearCredentials(remove_from_keychain=False)
             return False
-        return _apply_auth_response(response.json(), preserve_refresh_token=True)
+        success = _apply_auth_response(response.json(), preserve_refresh_token=True)
+        account = aw.plus_account
+        if not success:
+            if hasRememberedSession(account):
+                clearRememberedSession(account)
+            return False
+        if hasRememberedSession(account):
+            persistRefreshToken(account, getRefreshToken(), True)
+        return True
     except Exception as e:  # pylint: disable=broad-except
         _log.exception(e)
         clearCredentials(remove_from_keychain=False)
@@ -354,6 +365,8 @@ def refreshSession() -> bool:
     finally:
         if refresh_semaphore.available() < 1:
             refresh_semaphore.release(1)
+
+
 
 
 def restoreSession() -> bool:
@@ -463,7 +476,10 @@ def ensureAuthenticatedSession(interactive: bool = True) -> bool:
         return True
     if not interactive:
         return False
-    return authentify()
+    authenticated = authentify()
+    if authenticated:
+        config.connected = True
+    return authenticated
 
 
 def isSessionRestorable() -> bool:
