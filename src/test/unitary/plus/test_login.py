@@ -847,16 +847,20 @@ class TestLoginDialogUIComponents:
             'plus.login.QLineEdit'
         ) as mock_qlineedit_class:
             mock_super_init.return_value = None
+            mock_password_field = Mock()
             mock_username_field = Mock()
-            mock_qlineedit_class.return_value = mock_username_field
+            mock_qlineedit_class.side_effect = [mock_password_field, mock_username_field]
 
             # Act
             login.Login(mock_parent_widget, mock_app_window, email='test-user')
 
             # Assert
-            mock_username_field.setPlaceholderText.assert_called_with('Tên đăng nhập')
-            mock_username_field.textChanged.connect.assert_called()
-            mock_username_field.setText.assert_called_with('test-user')
+            mock_username_field.setPlaceholderText.assert_called_once_with('Tên đăng nhập')
+            mock_username_field.textChanged.connect.assert_called_once()
+            mock_username_field.setText.assert_called_once_with('test-user')
+            mock_password_field.setText.assert_not_called()
+            mock_password_field.setPlaceholderText.assert_called_once()
+            mock_qlineedit_class.assert_called()
 
     def test_remember_checkbox_setup(self, mock_parent_widget:Mock, mock_app_window:Mock) -> None:
         """Test remember checkbox is configured with proper state and handler."""

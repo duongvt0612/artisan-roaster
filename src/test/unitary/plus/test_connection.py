@@ -561,6 +561,25 @@ class TestCredentialManagement:
             # Should still clear config values despite keychain error
             assert mock_config.set_token.call_args.args == (None,) if hasattr(mock_config, 'set_token') else mock_config.access_token is None
 
+    def test_clear_credentials_attempts_refresh_token_delete_when_password_delete_fails(
+        self, mock_app_window: Mock
+    ) -> None:
+        """Test clearCredentials still deletes refresh token if password deletion fails."""
+        with patch('plus.connection.config') as mock_config, patch(
+            'keyring.delete_password', side_effect=[Exception('Password key error'), None]
+        ) as mock_delete_password:
+            mock_config.app_window = mock_app_window
+            mock_config.app_name = 'artisan.plus'
+            mock_config.access_token = 'test_token'
+
+            connection.clearCredentials(remove_from_keychain=True)
+
+            assert mock_delete_password.call_count == 2
+            mock_delete_password.assert_any_call('artisan.plus', 'test@example.com')
+            mock_delete_password.assert_any_call(
+                'artisan.plus', 'refresh::test@example.com'
+            )
+
     def test_clear_credentials_no_app_window(self) -> None:
         """Test clearCredentials when no app window is available."""
         # Arrange
@@ -682,14 +701,149 @@ class TestSessionAuthentication:
             'plus.connection.hasRememberedSession', return_value=True
         ), patch(
             'plus.connection.clearRememberedSession'
-        ) as mock_clear_remembered_session:
+        ) as mock_clear_remembered_session, patch(
+            'plus.connection.clearCredentials'
+        ) as mock_clear_credentials:
             mock_config.app_window = mock_app_window
+            mock_config.connected = True
             mock_config.get_refresh_url.return_value = 'https://artisan.plus/api/v1/auth/refresh'
 
             result = connection.refreshSession()
 
             assert result is False
             mock_clear_remembered_session.assert_called_once_with('test@example.com')
+            mock_clear_credentials.assert_called_once_with(remove_from_keychain=False)
+            assert mock_config.connected is False
+
+    def test_refresh_session_returns_false_when_token_changes_before_acquire_send(
+        self, mock_qsemaphore: Mock
+    ) -> None:
+        """Test refreshSession aborts when another thread rotates the token before send."""
+        mock_app_window = Mock()
+        mock_app_window.plus_account = 'test@example.com'
+
+        with patch('plus.connection.refresh_semaphore', mock_qsemaphore), patch(
+            'plus.connection.config'
+        ) as mock_config, patch(
+            'plus.connection.getRefreshToken', side_effect=['stale_refresh_token', 'fresh_refresh_token']
+        ), patch('plus.connection.sendData') as mock_send_data:
+            mock_config.app_window = mock_app_window
+
+            result = connection.refreshSession()
+
+            assert result is False
+            mock_send_data.assert_not_called()
+            mock_qsemaphore.acquire.assert_called_once_with(1)
+            mock_qsemaphore.release.assert_called_once_with(1)
+
+    def test_refresh_session_uses_post_acquire_refresh_token(
+        self, mock_qsemaphore: Mock, mock_response: Mock
+    ) -> None:
+        """Test refreshSession uses the freshest token read after acquiring the semaphore."""
+        mock_response.status_code = 200
+        mock_response.headers = {'content-type': 'application/json'}
+        mock_response.json.return_value = {'success': True, 'result': {'access_token': 'new_access'}}
+
+        mock_app_window = Mock()
+        mock_app_window.plus_account = 'test@example.com'
+
+        with patch('plus.connection.refresh_semaphore', mock_qsemaphore), patch(
+            'plus.connection.config'
+        ) as mock_config, patch(
+            'plus.connection.getRefreshToken', side_effect=['stale_refresh_token', 'stale_refresh_token']
+        ), patch(
+            'plus.connection.sendData', return_value=mock_response
+        ) as mock_send_data, patch(
+            'plus.connection._apply_auth_response', return_value=True
+        ), patch(
+            'plus.connection.hasRememberedSession', return_value=False
+        ):
+            mock_config.app_window = mock_app_window
+            mock_config.get_refresh_url.return_value = 'https://artisan.plus/api/v1/auth/refresh'
+
+            result = connection.refreshSession()
+
+            assert result is True
+            mock_send_data.assert_called_once_with(
+                'https://artisan.plus/api/v1/auth/refresh',
+                {'refreshToken': 'stale_refresh_token'},
+                'POST',
+                False,
+            )
+
+    def test_refresh_session_returns_false_when_token_cleared_before_send(
+        self, mock_qsemaphore: Mock
+    ) -> None:
+        """Test refreshSession aborts when no refresh token exists after acquiring the semaphore."""
+        mock_app_window = Mock()
+        mock_app_window.plus_account = 'test@example.com'
+
+        with patch('plus.connection.refresh_semaphore', mock_qsemaphore), patch(
+            'plus.connection.config'
+        ) as mock_config, patch(
+            'plus.connection.getRefreshToken', side_effect=['stale_refresh_token', None]
+        ), patch('plus.connection.sendData') as mock_send_data:
+            mock_config.app_window = mock_app_window
+
+            result = connection.refreshSession()
+
+            assert result is False
+            mock_send_data.assert_not_called()
+
+    def test_refresh_session_releases_semaphore_when_token_cleared_before_send(
+        self, mock_qsemaphore: Mock
+    ) -> None:
+        """Test refreshSession always releases the semaphore on early return after acquire."""
+        mock_app_window = Mock()
+        mock_app_window.plus_account = 'test@example.com'
+
+        with patch('plus.connection.refresh_semaphore', mock_qsemaphore), patch(
+            'plus.connection.config'
+        ) as mock_config, patch(
+            'plus.connection.getRefreshToken', side_effect=['stale_refresh_token', None]
+        ):
+            mock_config.app_window = mock_app_window
+
+            result = connection.refreshSession()
+
+            assert result is False
+            mock_qsemaphore.acquire.assert_called_once_with(1)
+            mock_qsemaphore.release.assert_called_once_with(1)
+            mock_qsemaphore.available.assert_called()
+
+    def test_refresh_session_persists_rotated_token_read_after_success(
+        self, mock_qsemaphore: Mock, mock_response: Mock
+    ) -> None:
+        """Test refreshSession persists the refreshed token value after auth succeeds."""
+        mock_response.status_code = 200
+        mock_response.headers = {'content-type': 'application/json'}
+        mock_response.json.return_value = {'success': True, 'result': {'access_token': 'new_access'}}
+
+        mock_app_window = Mock()
+        mock_app_window.plus_account = 'test@example.com'
+
+        with patch('plus.connection.refresh_semaphore', mock_qsemaphore), patch(
+            'plus.connection.config'
+        ) as mock_config, patch(
+            'plus.connection.getRefreshToken', side_effect=['old_refresh_token', 'old_refresh_token', 'rotated_refresh_token']
+        ), patch(
+            'plus.connection.sendData', return_value=mock_response
+        ), patch(
+            'plus.connection._apply_auth_response', return_value=True
+        ), patch(
+            'plus.connection.hasRememberedSession', return_value=True
+        ), patch(
+            'plus.connection.persistRefreshToken'
+        ) as mock_persist_refresh_token:
+            mock_config.app_window = mock_app_window
+            mock_config.get_refresh_url.return_value = 'https://artisan.plus/api/v1/auth/refresh'
+
+            result = connection.refreshSession()
+
+            assert result is True
+            mock_persist_refresh_token.assert_called_once_with(
+                'test@example.com', 'rotated_refresh_token', True
+            )
 
     def test_refresh_session_persists_rotated_refresh_token_for_remembered_session(
         self, mock_qsemaphore: Mock, mock_response: Mock
@@ -809,6 +963,115 @@ class TestSessionAuthentication:
 
             assert result is False
             mock_clear_credentials.assert_called_once_with(remove_from_keychain=True)
+
+    def test_refresh_session_uses_post_acquire_refresh_token(
+        self, mock_qsemaphore: Mock, mock_response: Mock
+    ) -> None:
+        """Test refreshSession uses the freshest token read after acquiring the semaphore."""
+        mock_response.status_code = 200
+        mock_response.headers = {'content-type': 'application/json'}
+        mock_response.json.return_value = {'success': True, 'result': {'access_token': 'new_access'}}
+
+        mock_app_window = Mock()
+        mock_app_window.plus_account = 'test@example.com'
+
+        with patch('plus.connection.refresh_semaphore', mock_qsemaphore), patch(
+            'plus.connection.config'
+        ) as mock_config, patch(
+            'plus.connection.getRefreshToken', side_effect=['stale_refresh_token', 'fresh_refresh_token']
+        ), patch(
+            'plus.connection.sendData', return_value=mock_response
+        ) as mock_send_data, patch(
+            'plus.connection._apply_auth_response', return_value=True
+        ), patch(
+            'plus.connection.hasRememberedSession', return_value=False
+        ):
+            mock_config.app_window = mock_app_window
+            mock_config.get_refresh_url.return_value = 'https://artisan.plus/api/v1/auth/refresh'
+
+            result = connection.refreshSession()
+
+            assert result is True
+            mock_send_data.assert_called_once_with(
+                'https://artisan.plus/api/v1/auth/refresh',
+                {'refreshToken': 'fresh_refresh_token'},
+                'POST',
+                False,
+            )
+
+    def test_refresh_session_returns_false_when_token_cleared_before_send(
+        self, mock_qsemaphore: Mock
+    ) -> None:
+        """Test refreshSession aborts when no refresh token exists after acquiring the semaphore."""
+        mock_app_window = Mock()
+        mock_app_window.plus_account = 'test@example.com'
+
+        with patch('plus.connection.refresh_semaphore', mock_qsemaphore), patch(
+            'plus.connection.config'
+        ) as mock_config, patch(
+            'plus.connection.getRefreshToken', side_effect=['stale_refresh_token', None]
+        ), patch('plus.connection.sendData') as mock_send_data:
+            mock_config.app_window = mock_app_window
+
+            result = connection.refreshSession()
+
+            assert result is False
+            mock_send_data.assert_not_called()
+
+    def test_refresh_session_releases_semaphore_when_token_cleared_before_send(
+        self, mock_qsemaphore: Mock
+    ) -> None:
+        """Test refreshSession always releases the semaphore on early return after acquire."""
+        mock_app_window = Mock()
+        mock_app_window.plus_account = 'test@example.com'
+
+        with patch('plus.connection.refresh_semaphore', mock_qsemaphore), patch(
+            'plus.connection.config'
+        ) as mock_config, patch(
+            'plus.connection.getRefreshToken', side_effect=['stale_refresh_token', None]
+        ):
+            mock_config.app_window = mock_app_window
+
+            result = connection.refreshSession()
+
+            assert result is False
+            mock_qsemaphore.acquire.assert_called_once_with(1)
+            mock_qsemaphore.release.assert_called_once_with(1)
+            mock_qsemaphore.available.assert_called()
+
+    def test_refresh_session_persists_rotated_token_read_after_success(
+        self, mock_qsemaphore: Mock, mock_response: Mock
+    ) -> None:
+        """Test refreshSession persists the refreshed token value after auth succeeds."""
+        mock_response.status_code = 200
+        mock_response.headers = {'content-type': 'application/json'}
+        mock_response.json.return_value = {'success': True, 'result': {'access_token': 'new_access'}}
+
+        mock_app_window = Mock()
+        mock_app_window.plus_account = 'test@example.com'
+
+        with patch('plus.connection.refresh_semaphore', mock_qsemaphore), patch(
+            'plus.connection.config'
+        ) as mock_config, patch(
+            'plus.connection.getRefreshToken', side_effect=['old_refresh_token', 'fresh_refresh_token', 'rotated_refresh_token']
+        ), patch(
+            'plus.connection.sendData', return_value=mock_response
+        ), patch(
+            'plus.connection._apply_auth_response', return_value=True
+        ), patch(
+            'plus.connection.hasRememberedSession', return_value=True
+        ), patch(
+            'plus.connection.persistRefreshToken'
+        ) as mock_persist_refresh_token:
+            mock_config.app_window = mock_app_window
+            mock_config.get_refresh_url.return_value = 'https://artisan.plus/api/v1/auth/refresh'
+
+            result = connection.refreshSession()
+
+            assert result is True
+            mock_persist_refresh_token.assert_called_once_with(
+                'test@example.com', 'rotated_refresh_token', True
+            )
 
 
 class TestHeaderGeneration:
@@ -1111,7 +1374,7 @@ class TestSendData:
 
 
 
-    def test_send_data_401_retry_failed_refresh(self) -> None:
+    def test_send_data_401_retry_failed_refresh_case1(self) -> None:
         """Test sendData returns the 401 response when refresh fails."""
         # Arrange
         url = 'https://api.example.com/data'
@@ -1148,7 +1411,7 @@ class TestSendData:
             mock_refresh.assert_called_once()
             mock_auth.assert_not_called()
 
-    def test_send_data_401_retry_failed_refresh(self) -> None:
+    def test_send_data_401_retry_failed_refresh_case2(self) -> None:
         """Test sendData returns the 401 response when refresh fails."""
         # Arrange
         url = 'https://api.example.com/data'
@@ -1185,7 +1448,7 @@ class TestSendData:
             mock_refresh.assert_called_once()
             mock_auth.assert_not_called()
 
-    def test_send_data_401_retry_failed_refresh(self) -> None:
+    def test_send_data_401_retry_failed_refresh_case3(self) -> None:
         """Test sendData returns the 401 response when refresh fails."""
         # Arrange
         url = 'https://api.example.com/data'

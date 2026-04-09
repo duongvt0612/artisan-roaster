@@ -147,12 +147,19 @@ def clearCredentials(remove_from_keychain: bool = True) -> None:
             try:
                 import keyring
 
-                keyring.delete_password(
-                    config.app_name, aw.plus_account
-                )  # @UndefinedVariable
-                keyring.delete_password(
-                    config.app_name, _get_refresh_token_key(aw.plus_account)
-                )
+                try:
+                    keyring.delete_password(
+                        config.app_name, aw.plus_account
+                    )  # @UndefinedVariable
+                except Exception as e:  # pylint: disable=broad-except
+                    _log.error(e)
+
+                try:
+                    keyring.delete_password(
+                        config.app_name, _get_refresh_token_key(aw.plus_account)
+                    )
+                except Exception as e:  # pylint: disable=broad-except
+                    _log.error(e)
             except Exception as e:  # pylint: disable=broad-except
                 _log.error(e)
     except Exception: # pylint: disable=broad-except
@@ -329,13 +336,13 @@ def refreshSession() -> bool:
     aw = config.app_window
     if aw is None:
         return False
-    refresh_token = getRefreshToken()
-    if refresh_token is None:
+    initial_refresh_token = getRefreshToken()
+    if initial_refresh_token is None:
         return False
     try:
         refresh_semaphore.acquire(1)
         current_refresh_token = getRefreshToken()
-        if current_refresh_token is None:
+        if current_refresh_token is None or current_refresh_token != initial_refresh_token:
             return False
         response = sendData(
             config.get_refresh_url(),
@@ -352,6 +359,7 @@ def refreshSession() -> bool:
         success = _apply_auth_response(response.json(), preserve_refresh_token=True)
         account = aw.plus_account
         if not success:
+            clearCredentials(remove_from_keychain=False)
             if hasRememberedSession(account):
                 clearRememberedSession(account)
             return False
