@@ -342,8 +342,10 @@ def refreshSession() -> bool:
     try:
         refresh_semaphore.acquire(1)
         current_refresh_token = getRefreshToken()
-        if current_refresh_token is None or current_refresh_token != initial_refresh_token:
+        if current_refresh_token is None:
             return False
+        if current_refresh_token != initial_refresh_token:
+            return True
         response = sendData(
             config.get_refresh_url(),
             {'refreshToken': current_refresh_token},

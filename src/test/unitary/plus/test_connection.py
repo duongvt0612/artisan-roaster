@@ -707,6 +707,9 @@ class TestSessionAuthentication:
             mock_config.app_window = mock_app_window
             mock_config.connected = True
             mock_config.get_refresh_url.return_value = 'https://artisan.plus/api/v1/auth/refresh'
+            mock_clear_credentials.side_effect = lambda remove_from_keychain=False: setattr(
+                mock_config, 'connected', False
+            )
 
             result = connection.refreshSession()
 
@@ -715,10 +718,10 @@ class TestSessionAuthentication:
             mock_clear_credentials.assert_called_once_with(remove_from_keychain=False)
             assert mock_config.connected is False
 
-    def test_refresh_session_returns_false_when_token_changes_before_acquire_send(
+    def test_refresh_session_returns_true_when_token_changes_while_waiting(
         self, mock_qsemaphore: Mock
     ) -> None:
-        """Test refreshSession aborts when another thread rotates the token before send."""
+        """Test refreshSession treats a rotated token as already refreshed."""
         mock_app_window = Mock()
         mock_app_window.plus_account = 'test@example.com'
 
@@ -731,7 +734,7 @@ class TestSessionAuthentication:
 
             result = connection.refreshSession()
 
-            assert result is False
+            assert result is True
             mock_send_data.assert_not_called()
             mock_qsemaphore.acquire.assert_called_once_with(1)
             mock_qsemaphore.release.assert_called_once_with(1)
@@ -739,7 +742,7 @@ class TestSessionAuthentication:
     def test_refresh_session_uses_post_acquire_refresh_token(
         self, mock_qsemaphore: Mock, mock_response: Mock
     ) -> None:
-        """Test refreshSession uses the freshest token read after acquiring the semaphore."""
+        """Test refreshSession uses the token read after acquiring the semaphore."""
         mock_response.status_code = 200
         mock_response.headers = {'content-type': 'application/json'}
         mock_response.json.return_value = {'success': True, 'result': {'access_token': 'new_access'}}
@@ -844,6 +847,27 @@ class TestSessionAuthentication:
             mock_persist_refresh_token.assert_called_once_with(
                 'test@example.com', 'rotated_refresh_token', True
             )
+
+    def test_refresh_session_returns_false_when_token_changes_before_acquire_send(
+        self, mock_qsemaphore: Mock
+    ) -> None:
+        """Test refreshSession aborts when another thread rotates the token before send."""
+        mock_app_window = Mock()
+        mock_app_window.plus_account = 'test@example.com'
+
+        with patch('plus.connection.refresh_semaphore', mock_qsemaphore), patch(
+            'plus.connection.config'
+        ) as mock_config, patch(
+            'plus.connection.getRefreshToken', side_effect=['stale_refresh_token', 'fresh_refresh_token']
+        ), patch('plus.connection.sendData') as mock_send_data:
+            mock_config.app_window = mock_app_window
+
+            result = connection.refreshSession()
+
+            assert result is False
+            mock_send_data.assert_not_called()
+            mock_qsemaphore.acquire.assert_called_once_with(1)
+            mock_qsemaphore.release.assert_called_once_with(1)
 
     def test_refresh_session_persists_rotated_refresh_token_for_remembered_session(
         self, mock_qsemaphore: Mock, mock_response: Mock
