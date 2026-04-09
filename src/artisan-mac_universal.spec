@@ -106,8 +106,7 @@ DATA_FILES = [
         (r'includes/Machines', './Machines'),
         (r'includes/Themes', './Themes'),
         (r'includes/Icons', './Icons'),
-        (r'includes/logging.yaml', '.'),
-        (r'artisan-plus-env.json', '.')
+        (r'includes/logging.yaml', '.')
 ]
 
 # add Artisan translations to DATA_FILES

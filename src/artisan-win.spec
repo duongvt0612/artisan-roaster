@@ -137,7 +137,7 @@ hiddenimports_list=['charset_normalizer.md__mypyc', # part of requests 2.28.2 # 
                             'winrt.windows.foundation.collections'
                             ]
 
-datas = collect_data_files('bleak', subdir=r'backends\winrt') + [(r'artisan-plus-env.json', '.')]
+datas = collect_data_files('bleak', subdir=r'backends\winrt')
 
 binaries = collect_dynamic_libs('bleak')
 block_cipher = None

@@ -758,6 +758,58 @@ class TestSessionAuthentication:
             assert result is True
             assert mock_config.connected is True
 
+    def test_apply_auth_response_accepts_token_from_result_payload(self) -> None:
+        """Test _apply_auth_response accepts payload-level token fields."""
+        mock_app_window = Mock()
+        mock_app_window.updateSubscriptionSignal = Mock()
+        mock_app_window.updateSubscriptionSignal.emit = Mock()
+        mock_app_window.updateLimitsSignal = Mock()
+        mock_app_window.updateLimitsSignal.emit = Mock()
+
+        response = {
+            'success': True,
+            'result': {
+                'token': 'payload_token',
+                'user': {
+                    'nickname': 'PayloadUser',
+                },
+            },
+        }
+
+        with patch('plus.connection.config') as mock_config, patch(
+            'plus.connection.setToken'
+        ) as mock_set_token:
+            mock_config.app_window = mock_app_window
+
+            result = connection._apply_auth_response(response)
+
+            assert result is True
+            mock_set_token.assert_called_once_with('payload_token', 'PayloadUser')
+
+    def test_refresh_session_removes_remembered_token_on_204_response(
+        self, mock_qsemaphore: Mock, mock_response: Mock
+    ) -> None:
+        """Test refreshSession clears keychain state when the refresh token has expired."""
+        mock_response.status_code = 204
+
+        mock_app_window = Mock()
+        mock_app_window.plus_account = 'test@example.com'
+
+        with patch('plus.connection.refresh_semaphore', mock_qsemaphore), patch(
+            'plus.connection.config'
+        ) as mock_config, patch(
+            'plus.connection.getRefreshToken', side_effect=['stored_refresh_token', 'stored_refresh_token']
+        ), patch(
+            'plus.connection.sendData', return_value=mock_response
+        ), patch('plus.connection.clearCredentials') as mock_clear_credentials:
+            mock_config.app_window = mock_app_window
+            mock_config.get_refresh_url.return_value = 'https://artisan.plus/api/v1/auth/refresh'
+
+            result = connection.refreshSession()
+
+            assert result is False
+            mock_clear_credentials.assert_called_once_with(remove_from_keychain=True)
+
 
 class TestHeaderGeneration:
     """Test HTTP header generation functionality."""
@@ -1007,6 +1059,129 @@ class TestSendData:
             # Assert
             assert result == mock_response
             assert mock_post.call_count == 2
+            mock_refresh.assert_called_once()
+            mock_auth.assert_not_called()
+
+    def test_send_data_401_retry_reuses_post_idempotency_key(self, mock_response: Mock) -> None:
+        """Test POST retries after 401 keep the original Idempotency-Key."""
+        url = 'https://api.example.com/data'
+        data = {'test': 'data'}
+
+        mock_401_response = Mock()
+        mock_401_response.status_code = 401
+        mock_401_response.elapsed = Mock()
+        mock_401_response.elapsed.total_seconds = Mock(return_value=0.3)
+
+        first_headers = {
+            'Content-Type': 'application/json',
+            'Idempotency-Key': 'original-key',
+        }
+        second_headers = {
+            'Content-Type': 'application/json',
+            'Idempotency-Key': 'new-key',
+        }
+
+        with patch(
+            'plus.connection.getHeadersAndData',
+            side_effect=[
+                (first_headers, b'{"test":"data"}'),
+                (second_headers, b'{"test":"data"}'),
+            ],
+        ), patch(
+            'plus.connection.requests.post', side_effect=[mock_401_response, mock_response]
+        ) as mock_post, patch(
+            'plus.connection.refreshSession', return_value=True
+        ), patch(
+            'plus.connection.config'
+        ) as mock_config:
+            mock_config.verify_ssl = True
+            mock_config.connect_timeout = 6
+            mock_config.read_timeout = 6
+
+            result = connection.sendData(url, data, 'POST', authorized=True)
+
+            assert result == mock_response
+            assert mock_post.call_count == 2
+            assert mock_post.call_args_list[0].kwargs['headers']['Idempotency-Key'] == 'original-key'
+            assert mock_post.call_args_list[1].kwargs['headers']['Idempotency-Key'] == 'original-key'
+
+            assert first_headers['Idempotency-Key'] == 'original-key'
+            assert second_headers['Idempotency-Key'] == 'new-key'
+            assert first_headers is not second_headers
+
+
+
+    def test_send_data_401_retry_failed_refresh(self) -> None:
+        """Test sendData returns the 401 response when refresh fails."""
+        # Arrange
+        url = 'https://api.example.com/data'
+        data = {'test': 'data'}
+
+        mock_401_response = Mock()
+        mock_401_response.status_code = 401
+        mock_401_response.elapsed = Mock()
+        mock_401_response.elapsed.total_seconds = Mock(return_value=0.3)
+
+        with patch(
+            'plus.connection.getHeadersAndData',
+            return_value=({'Content-Type': 'application/json'}, b'{"test":"data"}'),
+        ), patch(
+            'plus.connection.requests.post', return_value=mock_401_response
+        ) as mock_post, patch(
+            'plus.connection.refreshSession', return_value=False
+        ) as mock_refresh, patch(
+            'plus.connection.authentify'
+        ) as mock_auth, patch(
+            'plus.connection.config'
+        ) as mock_config:
+
+            mock_config.verify_ssl = True
+            mock_config.connect_timeout = 6
+            mock_config.read_timeout = 6
+
+            # Act
+            result = connection.sendData(url, data, 'POST', authorized=True)
+
+            # Assert
+            assert result == mock_401_response
+            assert mock_post.call_count == 1
+            mock_refresh.assert_called_once()
+            mock_auth.assert_not_called()
+
+    def test_send_data_401_retry_failed_refresh(self) -> None:
+        """Test sendData returns the 401 response when refresh fails."""
+        # Arrange
+        url = 'https://api.example.com/data'
+        data = {'test': 'data'}
+
+        mock_401_response = Mock()
+        mock_401_response.status_code = 401
+        mock_401_response.elapsed = Mock()
+        mock_401_response.elapsed.total_seconds = Mock(return_value=0.3)
+
+        with patch(
+            'plus.connection.getHeadersAndData',
+            return_value=({'Content-Type': 'application/json'}, b'{"test":"data"}'),
+        ), patch(
+            'plus.connection.requests.post', return_value=mock_401_response
+        ) as mock_post, patch(
+            'plus.connection.refreshSession', return_value=False
+        ) as mock_refresh, patch(
+            'plus.connection.authentify'
+        ) as mock_auth, patch(
+            'plus.connection.config'
+        ) as mock_config:
+
+            mock_config.verify_ssl = True
+            mock_config.connect_timeout = 6
+            mock_config.read_timeout = 6
+
+            # Act
+            result = connection.sendData(url, data, 'POST', authorized=True)
+
+            # Assert
+            assert result == mock_401_response
+            assert mock_post.call_count == 1
             mock_refresh.assert_called_once()
             mock_auth.assert_not_called()
 

@@ -178,7 +178,7 @@ def _apply_auth_response(res: JSON, preserve_refresh_token: bool = False) -> boo
 
     payload = res.get('result', res)
     user = payload.get('user', payload.get('data', {}))
-    access_token = payload.get('access_token') or user.get('token')
+    access_token = payload.get('access_token') or payload.get('token') or user.get('token')
     refresh_token = payload.get('refresh_token')
     if access_token is None:
         return False
@@ -344,7 +344,7 @@ def refreshSession() -> bool:
             False,
         )
         if response.status_code == 204:
-            clearCredentials(remove_from_keychain=False)
+            clearCredentials(remove_from_keychain=True)
             return False
         if not response.headers['content-type'].strip().startswith('application/json'):
             clearCredentials(remove_from_keychain=False)
@@ -572,9 +572,13 @@ def sendData(
             _log.debug('-> session token outdated (401)')
             if refreshSession():
                 time.sleep(0.3) # a little delay not to stress out the server too much
+                original_idempotency_key = headers.get('Idempotency-Key')
                 headers, postdata = getHeadersAndData(
                     authorized, compress, jsondata, verb
                 )  # recreate header with new token
+                headers = headers.copy()
+                if verb == 'POST' and original_idempotency_key is not None:
+                    headers['Idempotency-Key'] = original_idempotency_key
                 if verb == 'POST':
                     r = requests.post(
                         url,

@@ -5,7 +5,32 @@ from pathlib import Path
 
 
 HOOK_PATH = Path(__file__).resolve().parents[2] / 'pyinstaller_hooks' / 'rthooks' / 'pyi_rth_plus_config.py'
+SRC_ROOT = Path(__file__).resolve().parents[2]
 ENV_FILENAME = 'artisan-plus-env.json'
+SPEC_FILES = [
+    SRC_ROOT / 'artisan-linux.spec',
+    SRC_ROOT / 'artisan-mac.spec',
+    SRC_ROOT / 'artisan-mac_universal.spec',
+    SRC_ROOT / 'artisan-win.spec',
+]
+
+
+def test_production_pyinstaller_specs_do_not_bundle_localhost_plus_env() -> None:
+    for spec_file in SPEC_FILES:
+        assert ENV_FILENAME not in spec_file.read_text(encoding='utf-8')
+
+
+def test_plus_runtime_hook_does_nothing_when_packaged_env_file_is_absent(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr('sys.frozen', True, raising=False)
+    monkeypatch.setattr('sys._MEIPASS', str(tmp_path), raising=False)
+    monkeypatch.delenv('ARTISAN_PLUS_API_BASE_URL', raising=False)
+    monkeypatch.delenv('ARTISAN_PLUS_WEB_BASE_URL', raising=False)
+
+    runpy.run_path(str(HOOK_PATH), run_name='__main__')
+
+    assert 'ARTISAN_PLUS_API_BASE_URL' not in os.environ
+    assert 'ARTISAN_PLUS_WEB_BASE_URL' not in os.environ
+
 
 
 def test_plus_runtime_hook_loads_frozen_env_defaults(tmp_path, monkeypatch) -> None:
