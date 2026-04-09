@@ -27856,7 +27856,12 @@ def initialize_locale(my_app:Artisan) -> str:
     return locale
 
 def ensure_startup_login(app_window:'ApplicationWindow') -> bool:
-    return plus.controller.require_startup_login(app_window)
+    try:
+        return plus.controller.require_startup_login(app_window)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception('Startup login failed: %s', e)
+        return False
 
 
 def main() -> None:

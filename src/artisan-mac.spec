@@ -106,7 +106,8 @@ DATA_FILES = [
         (r'includes/Machines', './Machines'),
         (r'includes/Themes', './Themes'),
         (r'includes/Icons', './Icons'),
-        (r'includes/logging.yaml', '.')
+        (r'includes/logging.yaml', '.'),
+        (r'artisan-plus-env.json', '.')
 ]
 
 # add Artisan translations to DATA_FILES
@@ -133,7 +134,10 @@ a = Analysis(['artisan.py'],
                 },
              },
              hookspath=[],
-             runtime_hooks=['./pyinstaller_hooks/rthooks/pyi_rth_mplconfig.py'], # overwrites default MPL runtime hook which keeps loading font cache from (new) temp directory
+             runtime_hooks=[
+                './pyinstaller_hooks/rthooks/pyi_rth_mplconfig.py',
+                './pyinstaller_hooks/rthooks/pyi_rth_plus_config.py',
+             ], # overwrites default MPL runtime hook which keeps loading font cache from (new) temp directory
              additional_hooks_dir=[],
              excludes= ['tkinter', 'mypy'],
              win_no_prefer_redirects=False,

@@ -131,7 +131,7 @@ with patch('artisanlib.__version__', '2.8.4'), patch(
 ), patch(
     'plus.config.post_compression_threshold', 500
 ), patch(
-    'plus.config.token', None
+    'plus.config.access_token', None
 ), patch(
     'plus.config.nickname', None
 ), patch(
@@ -199,7 +199,7 @@ def isolated_test_environment() -> Generator[None, None, None]:
         config_mock.read_timeout = 6 # type: ignore[attr-defined]
         config_mock.compress_posts = True # type: ignore[attr-defined]
         config_mock.post_compression_threshold = 500 # type: ignore[attr-defined]
-        config_mock.token = None  # type: ignore[attr-defined]
+        config_mock.access_token = None  # type: ignore[attr-defined]
         config_mock.nickname = None # type: ignore[attr-defined]
         config_mock.passwd = None # type: ignore[attr-defined]
         config_mock.connected = False # type: ignore[attr-defined]
@@ -315,11 +315,15 @@ def mock_app_window() -> Mock:
 def reset_connection_state() -> Generator[None, None, None]:
     """Reset connection module state before and after each test to ensure complete isolation."""
     # Store original values
-    original_token = getattr(connection.config, 'token', None)
+    original_token = connection.config.get_token()
     original_nickname = getattr(connection.config, 'nickname', None)
     original_app_window = getattr(connection.config, 'app_window', None)
     original_connected = getattr(connection.config, 'connected', False)
     original_passwd = getattr(connection.config, 'passwd', None)
+    original_request_read_timeout = connection.request_read_timeout
+
+    # Reset dynamic read timeout for each test
+    connection.request_read_timeout = connection.config.read_timeout
 
     # Reset semaphore mocks if they exist and are actually mocks
     if hasattr(connection, 'token_semaphore'):
@@ -335,11 +339,12 @@ def reset_connection_state() -> Generator[None, None, None]:
     yield
 
     # Restore original values
-    connection.config.token = original_token
+    connection.config.set_token(original_token)
     connection.config.nickname = original_nickname
     connection.config.app_window = original_app_window
     connection.config.connected = original_connected
     connection.config.passwd = original_passwd
+    connection.request_read_timeout = original_request_read_timeout
 
 
 @pytest.fixture
@@ -401,7 +406,7 @@ class TestTokenManagement:
             # Assert
             mock_qsemaphore.acquire.assert_called_once_with(1)
             mock_qsemaphore.release.assert_called_once_with(1)
-            assert mock_config.token == test_token
+            assert mock_config.set_token.call_args.args == (test_token,) if hasattr(mock_config, 'set_token') else mock_config.access_token == test_token
             assert mock_config.nickname == test_nickname
 
     def test_set_token_with_app_window_operator_update(
@@ -439,7 +444,7 @@ class TestTokenManagement:
             connection.setToken(test_token)
 
             # Assert
-            assert mock_config.token == test_token
+            assert mock_config.set_token.call_args.args == (test_token,) if hasattr(mock_config, 'set_token') else mock_config.access_token == test_token
             assert mock_config.nickname is None
 
     def test_set_token_semaphore_protection(self, mock_qsemaphore: Mock) -> None:
@@ -486,7 +491,7 @@ class TestCredentialManagement:
     """Test credential management functionality."""
 
     def test_clear_credentials_with_keychain_removal(self, mock_app_window: Mock) -> None:
-        """Test clearCredentials with keychain removal."""
+        """Test clearCredentials removes password and remembered refresh token."""
         # Arrange
         with patch('plus.connection.config') as mock_config, patch(
             'keyring.delete_password'
@@ -494,7 +499,8 @@ class TestCredentialManagement:
 
             mock_config.app_window = mock_app_window
             mock_config.app_name = 'artisan.plus'
-            mock_config.token = 'test_token'
+            mock_config.access_token = 'test_token'
+            mock_config.refresh_token = 'refresh_token'
             mock_config.nickname = 'test_nickname'
             mock_config.passwd = 'test_password'
             mock_config.account_nr = 123
@@ -503,11 +509,18 @@ class TestCredentialManagement:
             connection.clearCredentials(remove_from_keychain=True)
 
             # Assert
-            mock_delete_password.assert_called_once_with('artisan.plus', 'test@example.com')
-            assert mock_config.token is None
+            assert mock_delete_password.call_count == 2
+            mock_delete_password.assert_any_call('artisan.plus', 'test@example.com')
+            mock_delete_password.assert_any_call(
+                'artisan.plus', 'refresh::test@example.com'
+            )
+            mock_config.set_token.assert_called_once_with(None)
+            assert mock_config.refresh_token is None
             assert mock_config.nickname is None
             assert mock_config.passwd is None
             assert mock_config.account_nr is None
+            assert mock_app_window.plus_account is None
+            assert mock_config.passwd is None
 
     def test_clear_credentials_without_keychain_removal(self, mock_app_window: Mock) -> None:
         """Test clearCredentials without keychain removal."""
@@ -517,7 +530,7 @@ class TestCredentialManagement:
         ) as mock_delete_password:
 
             mock_config.app_window = mock_app_window
-            mock_config.token = 'test_token'
+            mock_config.access_token = 'test_token'
             mock_config.nickname = 'test_nickname'
             mock_config.passwd = 'test_password'
             mock_config.account_nr = 123
@@ -527,7 +540,7 @@ class TestCredentialManagement:
 
             # Assert
             mock_delete_password.assert_not_called()
-            assert mock_config.token is None
+            assert mock_config.set_token.call_args.args == (None,) if hasattr(mock_config, 'set_token') else mock_config.access_token is None
             assert mock_config.nickname is None
             assert mock_config.passwd is None
             assert mock_config.account_nr is None
@@ -540,13 +553,13 @@ class TestCredentialManagement:
         ):
 
             mock_config.app_window = mock_app_window
-            mock_config.token = 'test_token'
+            mock_config.access_token = 'test_token'
 
             # Act & Assert - Should not raise exception
             connection.clearCredentials(remove_from_keychain=True)
 
             # Should still clear config values despite keychain error
-            assert mock_config.token is None
+            assert mock_config.set_token.call_args.args == (None,) if hasattr(mock_config, 'set_token') else mock_config.access_token is None
 
     def test_clear_credentials_no_app_window(self) -> None:
         """Test clearCredentials when no app window is available."""
@@ -556,14 +569,75 @@ class TestCredentialManagement:
         ) as mock_delete_password:
 
             mock_config.app_window = None
-            mock_config.token = 'test_token'
+            mock_config.access_token = 'test_token'
 
             # Act
             connection.clearCredentials(remove_from_keychain=True)
 
             # Assert
             mock_delete_password.assert_not_called()
-            assert mock_config.token is None
+            assert mock_config.set_token.call_args.args == (None,) if hasattr(mock_config, 'set_token') else mock_config.access_token is None
+
+
+class TestSessionPersistence:
+    """Test remembered session and logout behavior."""
+
+    def test_restore_session_uses_remembered_refresh_token(self, mock_app_window: Mock) -> None:
+        """Test restoreSession loads refresh token and refreshes the session."""
+        mock_app_window.plus_email = 'test@example.com'
+
+        with patch('plus.connection.config') as mock_config, patch(
+            'keyring.get_password', return_value='stored_refresh_token'
+        ) as mock_get_password, patch(
+            'plus.connection.setRefreshToken'
+        ) as mock_set_refresh_token, patch(
+            'plus.connection.refreshSession', return_value=True
+        ) as mock_refresh_session:
+            mock_config.app_window = mock_app_window
+            mock_config.app_name = 'artisan.plus'
+
+            result = connection.restoreSession()
+
+            assert result is True
+            mock_get_password.assert_called_once_with(
+                'artisan.plus', 'refresh::test@example.com'
+            )
+            mock_set_refresh_token.assert_called_once_with('stored_refresh_token')
+            mock_refresh_session.assert_called_once_with()
+            assert mock_app_window.plus_account == 'test@example.com'
+
+    def test_logout_clears_credentials_after_successful_request(self) -> None:
+        """Test logout clears credentials after calling the logout endpoint."""
+        mock_response = Mock()
+        mock_response.status_code = 204
+
+        connection.request_read_timeout = 6
+
+        with patch('plus.connection.getToken', return_value='access-token'), patch(
+            'plus.connection.getHeaders', return_value={'Authorization': 'Bearer access-token'}
+        ) as mock_get_headers, patch(
+            'plus.connection.requests.post', return_value=mock_response
+        ) as mock_post, patch('plus.connection.config') as mock_config, patch(
+            'plus.connection.clearCredentials'
+        ) as mock_clear_credentials:
+            mock_config.logout_url = 'https://artisan.plus/api/v1/auth/logout'
+            mock_config.verify_ssl = True
+            mock_config.connect_timeout = 6
+
+            result = connection.logout()
+
+            assert result is True
+            mock_get_headers.assert_called_once_with(True)
+            mock_post.assert_called_once_with(
+                'https://artisan.plus/api/v1/auth/logout',
+                headers={'Authorization': 'Bearer access-token'},
+                verify=True,
+                timeout=(6, 6),
+            )
+            mock_clear_credentials.assert_called_once_with()
+            assert connection.getReadTimeout() == 6
+
+        connection.request_read_timeout = connection.config.read_timeout
 
 
 class TestHeaderGeneration:
@@ -602,7 +676,7 @@ class TestHeaderGeneration:
         ):
 
             mock_config.app_window = mock_app_window
-            mock_config.token = 'auth_token_123'
+            mock_config.access_token = 'auth_token_123'
 
             # Act
             headers = connection.getHeaders(authorized=False, decompress=True)
@@ -620,7 +694,7 @@ class TestHeaderGeneration:
         ):
 
             mock_config.app_window = mock_app_window
-            mock_config.token = 'auth_token_123'
+            mock_config.access_token = 'auth_token_123'
 
             # Act
             headers = connection.getHeaders(authorized=True, decompress=False)
@@ -729,6 +803,8 @@ class TestSendData:
         url = 'https://api.example.com/data'
         data = {'test': 'data'}
 
+        connection.request_read_timeout = 12
+
         with patch(
             'plus.connection.getHeadersAndData',
             return_value=({'Content-Type': 'application/json'}, b'{"test":"data"}'),
@@ -739,6 +815,7 @@ class TestSendData:
             mock_config.verify_ssl = True
             mock_config.connect_timeout = 6
             mock_config.read_timeout = 6
+            mock_config.read_timeout_max = 12
 
             # Act
             result = connection.sendData(url, data, 'POST', authorized=True)
@@ -749,6 +826,9 @@ class TestSendData:
             call_args = mock_post.call_args
             assert call_args[1]['verify'] is True
             assert call_args[1]['timeout'] == (6, 12)
+            assert connection.getReadTimeout() == 10
+
+        connection.request_read_timeout = connection.config.read_timeout
 
     def test_send_data_put_success(self, mock_response: Mock) -> None:
         """Test sendData with successful PUT request."""
@@ -775,12 +855,11 @@ class TestSendData:
             mock_put.assert_called_once()
 
     def test_send_data_401_retry_success(self, mock_response: Mock) -> None:
-        """Test sendData handles 401 error with retry."""
+        """Test sendData refreshes the access token and retries once on 401."""
         # Arrange
         url = 'https://api.example.com/data'
         data = {'test': 'data'}
 
-        # First response is 401, second is success
         mock_401_response = Mock()
         mock_401_response.status_code = 401
         mock_401_response.elapsed = Mock()
@@ -792,7 +871,9 @@ class TestSendData:
         ), patch(
             'plus.connection.requests.post', side_effect=[mock_401_response, mock_response]
         ) as mock_post, patch(
-            'plus.connection.authentify', return_value=True
+            'plus.connection.refreshSession', return_value=True
+        ) as mock_refresh, patch(
+            'plus.connection.authentify'
         ) as mock_auth, patch(
             'plus.connection.config'
         ) as mock_config:
@@ -806,11 +887,12 @@ class TestSendData:
 
             # Assert
             assert result == mock_response
-            assert mock_post.call_count == 2  # Original call + retry
-            mock_auth.assert_called_once()
+            assert mock_post.call_count == 2
+            mock_refresh.assert_called_once()
+            mock_auth.assert_not_called()
 
-    def test_send_data_401_retry_failed_auth(self) -> None:
-        """Test sendData handles 401 error with failed re-authentication."""
+    def test_send_data_401_retry_failed_refresh(self) -> None:
+        """Test sendData returns the 401 response when refresh fails."""
         # Arrange
         url = 'https://api.example.com/data'
         data = {'test': 'data'}
@@ -826,7 +908,9 @@ class TestSendData:
         ), patch(
             'plus.connection.requests.post', return_value=mock_401_response
         ) as mock_post, patch(
-            'plus.connection.authentify', return_value=False
+            'plus.connection.refreshSession', return_value=False
+        ) as mock_refresh, patch(
+            'plus.connection.authentify'
         ) as mock_auth, patch(
             'plus.connection.config'
         ) as mock_config:
@@ -840,8 +924,9 @@ class TestSendData:
 
             # Assert
             assert result == mock_401_response
-            assert mock_post.call_count == 1  # Only original call, no retry
-            mock_auth.assert_called_once()
+            assert mock_post.call_count == 1
+            mock_refresh.assert_called_once()
+            mock_auth.assert_not_called()
 
     def test_send_data_unauthorized_request(self) -> None:
         """Test sendData with unauthorized request (no 401 retry)."""

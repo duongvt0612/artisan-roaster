@@ -52,7 +52,8 @@ EXCLUDES = [
 
 
 DATA_FILES = [
-    (os.path.join(get_package_paths('PyQt6')[1], 'Qt6/translations/qtwebengine_locales/en-US.pak'), 'PyQt6/Qt6/translations/qtwebengine_locales')
+    (os.path.join(get_package_paths('PyQt6')[1], 'Qt6/translations/qtwebengine_locales/en-US.pak'), 'PyQt6/Qt6/translations/qtwebengine_locales'),
+    ('artisan-plus-env.json', '.')
 ]
 
 a = Analysis(['artisan.py'],
@@ -60,7 +61,10 @@ a = Analysis(['artisan.py'],
     binaries=BINARIES,
     datas=DATA_FILES,
     hookspath=[],
-    runtime_hooks=['./pyinstaller_hooks/rthooks/pyi_rth_mplconfig.py'], # overwrites default MPL runtime hook which keeps loading font cache from (new) temp directory
+    runtime_hooks=[
+        './pyinstaller_hooks/rthooks/pyi_rth_mplconfig.py',
+        './pyinstaller_hooks/rthooks/pyi_rth_plus_config.py',
+    ], # overwrites default MPL runtime hook which keeps loading font cache from (new) temp directory
     excludes=EXCLUDES,
     hiddenimports=hiddenimports_list,
     win_no_prefer_redirects=False,

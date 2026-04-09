@@ -137,7 +137,7 @@ hiddenimports_list=['charset_normalizer.md__mypyc', # part of requests 2.28.2 # 
                             'winrt.windows.foundation.collections'
                             ]
 
-datas = collect_data_files('bleak', subdir=r'backends\winrt')
+datas = collect_data_files('bleak', subdir=r'backends\winrt') + [(r'artisan-plus-env.json', '.')]
 
 binaries = collect_dynamic_libs('bleak')
 block_cipher = None
@@ -147,7 +147,10 @@ a = Analysis(['artisan.py'],
              binaries=binaries,
              datas=datas, # + copy_metadata('tzdata')
              hookspath=[],
-             runtime_hooks=[r'pyinstaller_hooks\rthooks\pyi_rth_mplconfig.py'], # overwrites default MPL runtime hook which keeps loading font cache from (new) temp directory
+             runtime_hooks=[
+                 r'pyinstaller_hooks\rthooks\pyi_rth_mplconfig.py',
+                 r'pyinstaller_hooks\rthooks\pyi_rth_plus_config.py',
+             ], # overwrites default MPL runtime hook which keeps loading font cache from (new) temp directory
              additional_hooks_dir=[],
              excludes=[],
              hiddenimports=hiddenimports_list,

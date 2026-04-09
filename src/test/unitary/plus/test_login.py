@@ -6,7 +6,7 @@
 import sys
 from collections.abc import Generator
 from typing import Any
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 # Store original modules before any mocking to enable restoration
 original_modules: dict[str, Any] = {}
@@ -176,9 +176,12 @@ class MockQLineEdit:
     def __init__(self, *_args: Any) -> None:
         self.setEchoMode = Mock()
         self.setPlaceholderText = Mock()
-        self.setText = Mock()
         self.text = Mock(return_value='')
+        self.setText = Mock(side_effect=self._set_text)
         self.textChanged = Mock()
+
+    def _set_text(self, value: str) -> None:
+        self.text.return_value = value
 
     class EchoMode:
         Password = 1
@@ -239,6 +242,7 @@ with patch('PyQt6.QtWidgets.QApplication', MockQApplication), patch(
     'plus.config.min_login_len', 6
 ):
     from plus import login
+
 
 
 @pytest.fixture(scope='session', autouse=True)
@@ -444,8 +448,9 @@ class TestLoginDialogInitialization:
             assert hasattr(dialog, 'textName')
             assert hasattr(dialog, 'textPass')
             assert hasattr(dialog, 'rememberCheckbox')
-            assert hasattr(dialog, 'linkRegister')
-            assert hasattr(dialog, 'linkResetPassword')
+            assert hasattr(dialog, 'guideButton')
+            assert not hasattr(dialog, 'linkRegister')
+            assert not hasattr(dialog, 'linkResetPassword')
 
 
 class TestLoginDialogValidation:
@@ -454,7 +459,7 @@ class TestLoginDialogValidation:
     def test_is_input_reasonable_valid_credentials(
         self, mock_parent_widget:Mock, mock_app_window:Mock
     ) -> None:
-        """Test isInputReasonable returns True for valid credentials."""
+        """Test isInputReasonable returns True for valid username credentials."""
         # Arrange
         with patch('plus.login.ArtisanDialog.__init__') as mock_super_init:
             mock_super_init.return_value = None
@@ -462,7 +467,7 @@ class TestLoginDialogValidation:
 
             # Mock text inputs
             dialog.textName = Mock()
-            dialog.textName.text = Mock(return_value='user@example.com')
+            dialog.textName.text = Mock(return_value='test-user')
             dialog.textPass = Mock()
             dialog.textPass.text = Mock(return_value='password123')
 
@@ -471,6 +476,46 @@ class TestLoginDialogValidation:
 
             # Assert
             assert result is True
+
+    def test_is_input_reasonable_valid_username_without_email_shape(
+        self, mock_parent_widget:Mock, mock_app_window:Mock
+    ) -> None:
+        """Test username validation does not require email formatting."""
+        # Arrange
+        with patch('plus.login.ArtisanDialog.__init__') as mock_super_init:
+            mock_super_init.return_value = None
+            dialog = login.Login(mock_parent_widget, mock_app_window)
+
+            dialog.textName = Mock()
+            dialog.textName.text = Mock(return_value='roaster01')
+            dialog.textPass = Mock()
+            dialog.textPass.text = Mock(return_value='password123')
+
+            # Act
+            result = dialog.isInputReasonable()
+
+            # Assert
+            assert result is True
+
+    def test_is_input_reasonable_rejects_blank_username(
+        self, mock_parent_widget:Mock, mock_app_window:Mock
+    ) -> None:
+        """Test username validation rejects blank usernames."""
+        # Arrange
+        with patch('plus.login.ArtisanDialog.__init__') as mock_super_init:
+            mock_super_init.return_value = None
+            dialog = login.Login(mock_parent_widget, mock_app_window)
+
+            dialog.textName = Mock()
+            dialog.textName.text = Mock(return_value='      ')
+            dialog.textPass = Mock()
+            dialog.textPass.text = Mock(return_value='password123')
+
+            # Act
+            result = dialog.isInputReasonable()
+
+            # Assert
+            assert result is False
 
     def test_is_input_reasonable_short_password(self, mock_parent_widget:Mock, mock_app_window:Mock) -> None:
         """Test isInputReasonable returns False for short password."""
@@ -510,47 +555,6 @@ class TestLoginDialogValidation:
             # Assert
             assert result is False
 
-    def test_is_input_reasonable_invalid_email_no_at(
-        self, mock_parent_widget:Mock, mock_app_window:Mock
-    ) -> None:
-        """Test isInputReasonable returns False for email without @ symbol."""
-        # Arrange
-        with patch('plus.login.ArtisanDialog.__init__') as mock_super_init:
-            mock_super_init.return_value = None
-            dialog = login.Login(mock_parent_widget, mock_app_window)
-
-            # Mock text inputs
-            dialog.textName = Mock()
-            dialog.textName.text = Mock(return_value='userexample.com')  # No @ symbol
-            dialog.textPass = Mock()
-            dialog.textPass.text = Mock(return_value='password123')
-
-            # Act
-            result = dialog.isInputReasonable()
-
-            # Assert
-            assert result is False
-
-    def test_is_input_reasonable_invalid_email_no_dot(
-        self, mock_parent_widget:Mock, mock_app_window:Mock
-    ) -> None:
-        """Test isInputReasonable returns False for email without dot."""
-        # Arrange
-        with patch('plus.login.ArtisanDialog.__init__') as mock_super_init:
-            mock_super_init.return_value = None
-            dialog = login.Login(mock_parent_widget, mock_app_window)
-
-            # Mock text inputs
-            dialog.textName = Mock()
-            dialog.textName.text = Mock(return_value='user@examplecom')  # No dot
-            dialog.textPass = Mock()
-            dialog.textPass.text = Mock(return_value='password123')
-
-            # Act
-            result = dialog.isInputReasonable()
-
-            # Assert
-            assert result is False
 
 
 class TestLoginDialogEventHandlers:
@@ -591,7 +595,7 @@ class TestLoginDialogEventHandlers:
 
             # Mock UI components
             dialog.textName = Mock()
-            dialog.textName.text = Mock(return_value='user@example.com')
+            dialog.textName.text = Mock(return_value='test-user')
             dialog.textPass = Mock()
             dialog.textPass.text = Mock(return_value='password123')
             dialog.ok_button = Mock()
@@ -637,7 +641,7 @@ class TestLoginDialogEventHandlers:
 
             # Mock UI components and parent methods
             dialog.textName = Mock()
-            dialog.textName.text = Mock(return_value='user@example.com')
+            dialog.textName.text = Mock(return_value='test-user')
             dialog.textPass = Mock()
             dialog.textPass.text = Mock(return_value='password123')
             dialog.accept = Mock() # type: ignore[method-assign]
@@ -646,9 +650,9 @@ class TestLoginDialogEventHandlers:
             dialog.setCredentials()
 
             # Assert
-            assert dialog.login == 'user@example.com'
+            assert dialog.login == 'test-user'
             assert dialog.passwd == 'password123'
-            dialog.accept.assert_called_once() # ty:ignore
+            dialog.accept.assert_called_once()  # type: ignore
 
     def test_reject_stores_login(self, mock_parent_widget:Mock, mock_app_window:Mock) -> None:
         """Test reject stores login and calls parent reject."""
@@ -661,13 +665,13 @@ class TestLoginDialogEventHandlers:
 
             # Mock UI components
             dialog.textName = Mock()
-            dialog.textName.text = Mock(return_value='user@example.com')
+            dialog.textName.text = Mock(return_value='test-user')
 
             # Act
             dialog.reject()
 
             # Assert
-            assert dialog.login == 'user@example.com'
+            assert dialog.login == 'test-user'
             mock_super_reject.assert_called_once()
 
 
@@ -774,7 +778,7 @@ class TestPlusLoginFunction:
             )
 
             # Assert
-            assert result_login == ''  # Empty after strip
+            assert result_login is None
             assert result_passwd == 'password123'
             assert result_remember is True
             assert result_code == 1
@@ -804,39 +808,21 @@ class TestPlusLoginFunction:
 class TestLoginDialogUIComponents:
     """Test Login dialog UI component setup."""
 
-    def test_register_link_setup(self, mock_parent_widget:Mock, mock_app_window:Mock) -> None:
-        """Test register link is properly configured."""
+    def test_guide_action_replaces_register_and_reset_links(
+        self, mock_parent_widget:Mock, mock_app_window:Mock
+    ) -> None:
+        """Test the dialog exposes a guide action instead of register/reset links."""
         # Arrange
-        with patch('plus.login.ArtisanDialog.__init__') as mock_super_init, patch(
-            'plus.login.QLabel'
-        ) as mock_qlabel_class:
+        with patch('plus.login.ArtisanDialog.__init__') as mock_super_init:
             mock_super_init.return_value = None
-            mock_register_link = Mock()
-            mock_qlabel_class.return_value = mock_register_link
 
             # Act
             dialog = login.Login(mock_parent_widget, mock_app_window)
 
             # Assert
-            mock_register_link.setOpenExternalLinks.assert_called_with(True)
-            assert dialog.linkRegister == mock_register_link
-
-    def test_reset_password_link_setup(self, mock_parent_widget:Mock, mock_app_window:Mock) -> None:
-        """Test reset password link is properly configured."""
-        # Arrange
-        with patch('plus.login.ArtisanDialog.__init__') as mock_super_init, patch(
-            'plus.login.QLabel'
-        ) as mock_qlabel_class:
-            mock_super_init.return_value = None
-            mock_reset_link = Mock()
-            mock_qlabel_class.return_value = mock_reset_link
-
-            # Act
-            dialog = login.Login(mock_parent_widget, mock_app_window)
-
-            # Assert
-            mock_reset_link.setOpenExternalLinks.assert_called_with(True)
-            assert dialog.linkResetPassword == mock_reset_link
+            assert hasattr(dialog, 'guideButton')
+            assert not hasattr(dialog, 'linkRegister')
+            assert not hasattr(dialog, 'linkResetPassword')
 
     def test_password_field_setup(self, mock_parent_widget:Mock, mock_app_window:Mock) -> None:
         """Test password field is configured with password echo mode."""
@@ -855,23 +841,23 @@ class TestLoginDialogUIComponents:
             mock_password_field.setEchoMode.assert_called()
             mock_password_field.setPlaceholderText.assert_called()
 
-    def test_email_field_setup(self, mock_parent_widget:Mock, mock_app_window:Mock) -> None:
-        """Test email field is configured with placeholder and change handler."""
+    def test_username_field_setup(self, mock_parent_widget:Mock, mock_app_window:Mock) -> None:
+        """Test username field is configured with placeholder and change handler."""
         # Arrange
         with patch('plus.login.ArtisanDialog.__init__') as mock_super_init, patch(
             'plus.login.QLineEdit'
         ) as mock_qlineedit_class:
             mock_super_init.return_value = None
-            mock_email_field = Mock()
-            mock_qlineedit_class.return_value = mock_email_field
+            mock_username_field = Mock()
+            mock_qlineedit_class.return_value = mock_username_field
 
             # Act
-            login.Login(mock_parent_widget, mock_app_window, email='test@example.com')
+            login.Login(mock_parent_widget, mock_app_window, email='test-user')
 
             # Assert
-            mock_email_field.setPlaceholderText.assert_called()
-            mock_email_field.textChanged.connect.assert_called()
-            mock_email_field.setText.assert_called_with('test@example.com')
+            mock_username_field.setPlaceholderText.assert_called_with('Tên đăng nhập')
+            mock_username_field.textChanged.connect.assert_called()
+            mock_username_field.setText.assert_called_with('test-user')
 
     def test_remember_checkbox_setup(self, mock_parent_widget:Mock, mock_app_window:Mock) -> None:
         """Test remember checkbox is configured with proper state and handler."""
@@ -891,7 +877,7 @@ class TestLoginDialogUIComponents:
             mock_checkbox.stateChanged.connect.assert_called()
 
     def test_button_state_with_saved_password(self, mock_parent_widget:Mock, mock_app_window:Mock) -> None:
-        """Test button states are properly set when saved password is provided."""
+        """Test saved password alone does not enable submit without username."""
         # Arrange
         with patch('plus.login.ArtisanDialog.__init__') as mock_super_init:
             mock_super_init.return_value = None
@@ -901,20 +887,291 @@ class TestLoginDialogUIComponents:
                 mock_parent_widget, mock_app_window, saved_password='saved_password'
             )
 
-            # Mock the buttons after initialization
-            dialog.ok_button = Mock()
-            dialog.cancel_button = Mock()
-
-            # Simulate the button setup that happens in __init__
-            if dialog.passwd is not None:
-                if dialog.cancel_button is not None:
-                    dialog.cancel_button.setDefault(False)
-                if dialog.ok_button is not None:
-                    dialog.ok_button.setDefault(True)
-                    dialog.ok_button.setEnabled(True)
-
             # Assert
             assert dialog.passwd == 'saved_password'
+            if dialog.ok_button is not None:
+                dialog.ok_button.setEnabled.assert_called_with(False)
+
+    def test_plus_login_empty_username_returns_none(self, mock_parent_widget:Mock, mock_app_window:Mock) -> None:
+        """Test plus_login normalizes blank usernames to None."""
+        with patch('plus.login.Login') as mock_login_class:
+            mock_dialog = Mock()
+            mock_dialog.login = '   '
+            mock_dialog.passwd = 'password123'
+            mock_dialog.remember = True
+            mock_dialog.exec.return_value = 1
+            mock_login_class.return_value = mock_dialog
+
+            result_login, result_passwd, result_remember, result_code = login.plus_login(
+                mock_parent_widget, mock_app_window
+            )
+
+            assert result_login is None
+            assert result_passwd == 'password123'
+            assert result_remember is True
+            assert result_code == 1
+
+    def test_set_credentials_strips_username(self, mock_parent_widget:Mock, mock_app_window:Mock) -> None:
+        """Test setCredentials trims surrounding whitespace from username."""
+        with patch('plus.login.ArtisanDialog.__init__') as mock_super_init:
+            mock_super_init.return_value = None
+            dialog = login.Login(mock_parent_widget, mock_app_window)
+
+            dialog.textName = Mock()
+            dialog.textName.text = Mock(return_value='  test-user  ')
+            dialog.textPass = Mock()
+            dialog.textPass.text = Mock(return_value='password123')
+            dialog.accept = Mock() # type: ignore[method-assign]
+
+            dialog.setCredentials()
+
+            assert dialog.login == 'test-user'
+            assert dialog.passwd == 'password123'
+            dialog.accept.assert_called_once() # ty:ignore
+
+    def test_reject_stores_stripped_username(self, mock_parent_widget:Mock, mock_app_window:Mock) -> None:
+        """Test reject stores trimmed username."""
+        with patch('plus.login.ArtisanDialog.__init__') as mock_super_init, patch(
+            'plus.login.ArtisanDialog.reject'
+        ) as mock_super_reject:
+            mock_super_init.return_value = None
+            dialog = login.Login(mock_parent_widget, mock_app_window)
+
+            dialog.textName = Mock()
+            dialog.textName.text = Mock(return_value='  test-user  ')
+
+            dialog.reject()
+
+            assert dialog.login == 'test-user'
+            mock_super_reject.assert_called_once()
+
+    def test_set_credentials_blank_username_stores_none(self, mock_parent_widget:Mock, mock_app_window:Mock) -> None:
+        """Test blank usernames are normalized to None on accept."""
+        with patch('plus.login.ArtisanDialog.__init__') as mock_super_init:
+            mock_super_init.return_value = None
+            dialog = login.Login(mock_parent_widget, mock_app_window)
+
+            dialog.textName = Mock()
+            dialog.textName.text = Mock(return_value='   ')
+            dialog.textPass = Mock()
+            dialog.textPass.text = Mock(return_value='password123')
+            dialog.accept = Mock() # type: ignore[method-assign]
+
+            dialog.setCredentials()
+
+            assert dialog.login is None
+            assert dialog.passwd == 'password123'
+            dialog.accept.assert_called_once() # ty:ignore
+
+    def test_reject_blank_username_stores_none(self, mock_parent_widget:Mock, mock_app_window:Mock) -> None:
+        """Test blank usernames are normalized to None on reject."""
+        with patch('plus.login.ArtisanDialog.__init__') as mock_super_init, patch(
+            'plus.login.ArtisanDialog.reject'
+        ) as mock_super_reject:
+            mock_super_init.return_value = None
+            dialog = login.Login(mock_parent_widget, mock_app_window)
+
+            dialog.textName = Mock()
+            dialog.textName.text = Mock(return_value='   ')
+
+            dialog.reject()
+
+            assert dialog.login is None
+            mock_super_reject.assert_called_once()
+
+    def test_plus_login_saved_password_blank_username_returns_none(
+        self, mock_parent_widget:Mock, mock_app_window:Mock
+    ) -> None:
+        """Test saved password flow still normalizes blank username to None."""
+        with patch('plus.login.Login') as mock_login_class:
+            mock_dialog = Mock()
+            mock_dialog.login = ''
+            mock_dialog.passwd = 'saved_password'
+            mock_dialog.remember = True
+            mock_dialog.exec.return_value = 1
+            mock_login_class.return_value = mock_dialog
+
+            result_login, result_passwd, result_remember, result_code = login.plus_login(
+                mock_parent_widget,
+                mock_app_window,
+                email=None,
+                saved_password='saved_password',
+                remember_credentials=True,
+            )
+
+            assert result_login is None
+            assert result_passwd == 'saved_password'
+            assert result_remember is True
+            assert result_code == 1
+
+    def test_saved_password_with_username_keeps_submit_enabled(
+        self, mock_parent_widget:Mock, mock_app_window:Mock
+    ) -> None:
+        """Test saved password still enables submit when username is prefilled."""
+        with patch('plus.login.ArtisanDialog.__init__') as mock_super_init:
+            mock_super_init.return_value = None
+
+            dialog = login.Login(
+                mock_parent_widget,
+                mock_app_window,
+                email='test-user',
+                saved_password='saved_password',
+            )
+
+            if dialog.ok_button is not None:
+                dialog.ok_button.setEnabled.assert_called_with(True)
+                dialog.ok_button.setDefault.assert_called_with(True)
+
+            assert dialog.passwd == 'saved_password'
+
+
+    def test_reject_stores_none_when_field_only_has_spaces(self, mock_parent_widget:Mock, mock_app_window:Mock) -> None:
+        """Test whitespace-only username does not survive reject."""
+        with patch('plus.login.ArtisanDialog.__init__') as mock_super_init, patch(
+            'plus.login.ArtisanDialog.reject'
+        ) as mock_super_reject:
+            mock_super_init.return_value = None
+            dialog = login.Login(mock_parent_widget, mock_app_window)
+
+            dialog.textName = Mock()
+            dialog.textName.text = Mock(return_value='      ')
+
+            dialog.reject()
+
+            assert dialog.login is None
+            mock_super_reject.assert_called_once()
+
+    def test_set_credentials_spaces_only_username_stores_none(self, mock_parent_widget:Mock, mock_app_window:Mock) -> None:
+        """Test whitespace-only username does not survive accept."""
+        with patch('plus.login.ArtisanDialog.__init__') as mock_super_init:
+            mock_super_init.return_value = None
+            dialog = login.Login(mock_parent_widget, mock_app_window)
+
+            dialog.textName = Mock()
+            dialog.textName.text = Mock(return_value='      ')
+            dialog.textPass = Mock()
+            dialog.textPass.text = Mock(return_value='saved_password')
+            dialog.accept = Mock() # type: ignore[method-assign]
+
+            dialog.setCredentials()
+
+            assert dialog.login is None
+            assert dialog.passwd == 'saved_password'
+            dialog.accept.assert_called_once() # ty:ignore
+
+    def test_plus_login_empty_string_from_dialog_returns_none_even_after_strip(
+        self, mock_parent_widget:Mock, mock_app_window:Mock
+    ) -> None:
+        """Test plus_login converts stripped empty usernames to None."""
+        with patch('plus.login.Login') as mock_login_class:
+            mock_dialog = Mock()
+            mock_dialog.login = '      '
+            mock_dialog.passwd = 'password123'
+            mock_dialog.remember = False
+            mock_dialog.exec.return_value = 1
+            mock_login_class.return_value = mock_dialog
+
+            result_login, result_passwd, result_remember, result_code = login.plus_login(
+                mock_parent_widget, mock_app_window
+            )
+
+            assert result_login is None
+            assert result_passwd == 'password123'
+            assert result_remember is False
+            assert result_code == 1
+
+    def test_saved_password_without_username_keeps_cancel_default(
+        self, mock_parent_widget:Mock, mock_app_window:Mock
+    ) -> None:
+        """Test saved password without username does not flip default button to OK."""
+        with patch('plus.login.ArtisanDialog.__init__') as mock_super_init:
+            mock_super_init.return_value = None
+
+            dialog = login.Login(
+                mock_parent_widget,
+                mock_app_window,
+                saved_password='saved_password',
+            )
+
+            if dialog.cancel_button is not None:
+                dialog.cancel_button.setDefault.assert_called_with(True)
+
+
+            assert dialog.passwd == 'saved_password'
+
+    def test_saved_password_with_blank_prefill_does_not_enable_submit(
+        self, mock_parent_widget:Mock, mock_app_window:Mock
+    ) -> None:
+        """Test blank prefilled username behaves like missing username."""
+        with patch('plus.login.ArtisanDialog.__init__') as mock_super_init:
+            mock_super_init.return_value = None
+
+            dialog = login.Login(
+                mock_parent_widget,
+                mock_app_window,
+                email='   ',
+                saved_password='saved_password',
+            )
+
+            if dialog.ok_button is not None:
+                dialog.ok_button.setEnabled.assert_called_with(False)
+
+            assert dialog.passwd == 'saved_password'
+
+    def test_saved_password_with_trimmed_prefill_enables_submit(
+        self, mock_parent_widget:Mock, mock_app_window:Mock
+    ) -> None:
+        """Test username prefill is trimmed before enabling submit."""
+        with patch('plus.login.ArtisanDialog.__init__') as mock_super_init:
+            mock_super_init.return_value = None
+
+            dialog = login.Login(
+                mock_parent_widget,
+                mock_app_window,
+                email='  test-user  ',
+                saved_password='saved_password',
+            )
+
+            if dialog.ok_button is not None:
+                dialog.ok_button.setEnabled.assert_called_with(True)
+
+            assert dialog.passwd == 'saved_password'
+
+    def test_saved_password_blank_username_does_not_bypass_validation(
+        self, mock_parent_widget:Mock, mock_app_window:Mock
+    ) -> None:
+        """Test blank username with saved password still fails isInputReasonable."""
+        with patch('plus.login.ArtisanDialog.__init__') as mock_super_init:
+            mock_super_init.return_value = None
+            dialog = login.Login(mock_parent_widget, mock_app_window, saved_password='saved_password')
+
+            dialog.textName = Mock()
+            dialog.textName.text = Mock(return_value='   ')
+            dialog.textPass = Mock()
+            dialog.textPass.text = Mock(return_value='saved_password')
+
+            assert dialog.isInputReasonable() is False
+
+    def test_saved_password_real_username_passes_validation(
+        self, mock_parent_widget:Mock, mock_app_window:Mock
+    ) -> None:
+        """Test username plus saved password still passes validation."""
+        with patch('plus.login.ArtisanDialog.__init__') as mock_super_init:
+            mock_super_init.return_value = None
+            dialog = login.Login(
+                mock_parent_widget,
+                mock_app_window,
+                email='test-user',
+                saved_password='saved_password',
+            )
+
+            dialog.textName = Mock()
+            dialog.textName.text = Mock(return_value='test-user')
+            dialog.textPass = Mock()
+            dialog.textPass.text = Mock(return_value='saved_password')
+
+            assert dialog.isInputReasonable() is True
+
 
 
 class TestLoginDialogKeyboardShortcuts:
@@ -988,7 +1245,7 @@ class TestLoginDialogEdgeCases:
             dialog.setCredentials()
 
             # Assert
-            assert dialog.login == ''
+            assert dialog.login is None
             assert dialog.passwd == ''
             dialog.accept.assert_called_once() # ty:ignore
 
@@ -1001,7 +1258,7 @@ class TestLoginDialogEdgeCases:
 
             # Test minimum valid lengths
             dialog.textName = Mock()
-            dialog.textName.text = Mock(return_value='u@e.co')  # Exactly min_login_len
+            dialog.textName.text = Mock(return_value='user01')  # Exactly min_login_len
             dialog.textPass = Mock()
             dialog.textPass.text = Mock(return_value='1234')  # Exactly min_passwd_len
 

@@ -48,6 +48,13 @@ JSON = Any
 token_semaphore = QSemaphore(
     1
 )  # protects access to the session token which is manipulated only here
+refresh_semaphore = QSemaphore(1)
+
+_REFRESH_TOKEN_KEY_PREFIX: Final[str] = 'refresh::'
+
+
+def _get_refresh_token_key(account: str) -> str:
+    return f'{_REFRESH_TOKEN_KEY_PREFIX}{account}'
 
 # request timeout
 
@@ -68,7 +75,19 @@ def updateReadTimeoutOnTimeout() -> None:
 def getToken() -> str|None:
     try:
         token_semaphore.acquire(1)
-        return config.token
+        return config.get_token()
+    except Exception as e:  # pylint: disable=broad-except
+        _log.exception(e)
+        return None
+    finally:
+        if token_semaphore.available() < 1:
+            token_semaphore.release(1)
+
+
+def getRefreshToken() -> str|None:
+    try:
+        token_semaphore.acquire(1)
+        return config.refresh_token
     except Exception as e:  # pylint: disable=broad-except
         _log.exception(e)
         return None
@@ -92,7 +111,7 @@ def getNickname() -> str|None:
 def setToken(token: str, nickname: str|None = None) -> None:
     try:
         token_semaphore.acquire(1)
-        config.token = token
+        config.set_token(token)
         config.nickname = nickname
         aw = config.app_window
         if (aw is not None
@@ -101,6 +120,15 @@ def setToken(token: str, nickname: str|None = None) -> None:
             and nickname != ''
         ):  # @UndefinedVariable
             aw.qmc.operator = nickname
+    finally:
+        if token_semaphore.available() < 1:
+            token_semaphore.release(1)
+
+
+def setRefreshToken(refresh_token: str|None) -> None:
+    try:
+        token_semaphore.acquire(1)
+        config.refresh_token = refresh_token
     finally:
         if token_semaphore.available() < 1:
             token_semaphore.release(1)
@@ -117,19 +145,14 @@ def clearCredentials(remove_from_keychain: bool = True) -> None:
             and remove_from_keychain
         ):  # @UndefinedVariable
             try:
-
-#                if platform.system().startswith('Windows'):
-#                    import keyring.backends.Windows  # @UnusedImport
-#                elif platform.system() == 'Darwin':
-#                    import keyring.backends.macOS  # @UnusedImport @UnresolvedImport
-#                else:
-#                    import keyring.backends.SecretService  # @UnusedImport
-#                import keyring  # @Reimport # imported last to make py2app work
                 import keyring
 
                 keyring.delete_password(
                     config.app_name, aw.plus_account
                 )  # @UndefinedVariable
+                keyring.delete_password(
+                    config.app_name, _get_refresh_token_key(aw.plus_account)
+                )
             except Exception as e:  # pylint: disable=broad-except
                 _log.error(e)
     except Exception: # pylint: disable=broad-except
@@ -137,7 +160,8 @@ def clearCredentials(remove_from_keychain: bool = True) -> None:
         pass
     try:
         token_semaphore.acquire(1)
-        config.token = None
+        config.set_token(None)
+        config.refresh_token = None
         if aw is not None:
             aw.plus_account = None
         config.passwd = None
@@ -146,6 +170,88 @@ def clearCredentials(remove_from_keychain: bool = True) -> None:
     finally:
         if token_semaphore.available() < 1:
             token_semaphore.release(1)
+
+def _apply_auth_response(res: JSON, preserve_refresh_token: bool = False) -> bool:
+    aw = config.app_window
+    if aw is None:
+        return False
+
+    payload = res.get('result', res)
+    user = payload.get('user', payload.get('data', {}))
+    access_token = payload.get('access_token') or user.get('token')
+    refresh_token = payload.get('refresh_token')
+    if access_token is None:
+        return False
+
+    nickname = util.extractInfo(user, 'nickname', None)
+    aw.plus_language = util.extractInfo(user, 'language', 'en')
+    aw.plus_user_id = util.extractInfo(user, 'user_id', util.extractInfo(user, 'id', None))
+    aw.plus_paidUntil = None
+    aw.plus_subscription = None
+    aw.plus_rlimit = 0
+    aw.plus_used = 0
+
+    if 'account' in user:
+        res_account = user['account']
+        if '_id' in res_account:
+            aw.plus_account_id = res_account['_id']
+        subscription = util.extractInfo(res_account, 'subscription', '')
+        aw.updateSubscriptionSignal.emit(subscription)
+        paidUntil = util.extractInfo(res_account, 'paidUntil', '')
+        rlimit = -1
+        rused = -1
+        notifications = 0
+        machines = []
+        try:
+            if 'limit' in user['account']:
+                ol = res_account['limit']
+                if 'rlimit' in ol:
+                    rlimit = ol['rlimit']
+                if 'rused' in ol:
+                    rused = ol['rused']
+        except Exception as e:  # pylint: disable=broad-except
+            _log.exception(e)
+
+        if 'notifications' in res:
+            notificationDict = res['notifications']
+            if notificationDict:
+                notifications = util.extractInfo(notificationDict, 'unqualified', 0)
+                machines = util.extractInfo(notificationDict, 'machines', [])
+            try:
+                aw.updateLimitsSignal.emit(rlimit, rused, paidUntil, notifications, machines)
+            except Exception as e:  # pylint: disable=broad-except
+                _log.exception(e)
+
+        try:
+            if paidUntil != '' and (
+                dateutil.parser.parse(paidUntil).date()
+                - datetime.datetime.now(datetime.UTC).date()
+            ).days < (-config.expired_subscription_max_days):
+                _log.debug('-> authentication failed due to long expired subscription')
+                if 'error' in res:
+                    aw.sendmessage(res['error'])
+                clearCredentials()
+                return False
+        except Exception as e:  # pylint: disable=broad-except
+            _log.exception(e)
+
+    if 'readonly' in user and isinstance(user['readonly'], bool):
+        aw.plus_readonly = user['readonly']
+    else:
+        aw.plus_readonly = False
+
+    setToken(access_token, nickname)
+    if refresh_token is not None:
+        setRefreshToken(refresh_token)
+    elif not preserve_refresh_token:
+        setRefreshToken(None)
+
+    if 'account' in user and '_id' in user['account']:
+        account_nr = account.setAccount(user['account']['_id'])
+        config.account_nr = account_nr
+        _log.debug('-> account: %s', account_nr)
+    return True
+
 
 # returns True on successful authentication
 # NOTE: authentify might be called from outside the GUI thread
@@ -156,144 +262,38 @@ def authentify() -> bool:
         if (
             aw is not None
             and aw.plus_account is not None
-        ):  # @UndefinedVariable
-            # fetch passwd
+        ):
             if config.passwd is None:
                 try:
-                    import keyring  # @Reimport # imported last to make py2app work
+                    import keyring
 
                     config.passwd = keyring.get_password(
                         config.app_name, aw.plus_account
-                    )  # @UndefinedVariable
+                    )
                 except Exception as e:  # pylint: disable=broad-except
                     _log.exception(e)
             if config.passwd is None:
                 _log.debug('-> password not found')
                 clearCredentials()
                 return False
-            _log.debug(
-                '-> authentifying %s',
-                aw.plus_account,
-            )  # @UndefinedVariable
+            _log.debug('-> authentifying %s', aw.plus_account)
             data = {
                 'email': aw.plus_account,
+                'username': aw.plus_account,
                 'password': config.passwd,
-            }  # @UndefinedVariable
+            }
             r = sendData(config.auth_url, data, 'POST', False)
-            _log.debug(
-                '-> authentifying reply status code: %s',
-                r.status_code,
-            )  # @UndefinedVariable
-            # returns 404: login wrong and 401: passwd wrong
+            _log.debug('-> authentifying reply status code: %s', r.status_code)
             if r.status_code != 204 and r.headers['content-type'].strip().startswith('application/json'):
                 res = r.json()
                 if (
-                    'success' in res
-                    and res['success']
-                    and 'result' in res
-                    and 'user' in res['result']
-                    and 'token' in res['result']['user']
+                    ('success' in res and res['success'] and 'result' in res)
+                    or 'access_token' in res
                 ):
-                    _log.debug(
-                        '-> authentified, token received'
-                    )
-                    # extract in user/account data
-                    nickname = util.extractInfo(
-                        res['result']['user'], 'nickname', None
-                    )
-                    aw.plus_language = util.extractInfo(
-                        res['result']['user'], 'language', 'en'
-                    )
-                    aw.plus_user_id = util.extractInfo(
-                        res['result']['user'], 'user_id', None
-                    )
-                    aw.plus_paidUntil = None
-                    aw.plus_subscription = None
-                    aw.plus_rlimit = 0
-                    aw.plus_used = 0
-                    if 'account' in res['result']['user']:
-                        res_account = res['result']['user']['account']
-                        if '_id' in res_account:
-                            aw.plus_account_id = res_account['_id']
-                        subscription = util.extractInfo(
-                            res_account, 'subscription', ''
-                        )
-                        aw.updateSubscriptionSignal.emit(subscription)
-                        paidUntil = util.extractInfo(
-                            res_account, 'paidUntil', ''
-                        )
-                        rlimit = -1
-                        rused = -1
-                        notifications = 0 # unqualified notifications
-                        machines = [] # list of machine names with matching notifications
-                        try:
-                            if 'limit' in res['result']['user']['account']:
-                                ol = res_account['limit']
-                                if 'rlimit' in ol:
-                                    rlimit = ol['rlimit']
-                                if 'rused' in ol:
-                                    rused = ol['rused']
-                        except Exception as e:  # pylint: disable=broad-except
-                            _log.exception(e)
-
-                        if 'notifications' in res:
-                            notificationDict = res['notifications']
-                            if notificationDict:
-                                notifications = util.extractInfo(notificationDict, 'unqualified', 0)
-                                machines = util.extractInfo(notificationDict, 'machines', [])
-                            try:
-                                aw.updateLimitsSignal.emit(rlimit,rused,paidUntil,notifications,machines)
-                            except Exception as e:  # pylint: disable=broad-except
-                                _log.exception(e)
-
-
-                        # note, here we have to convert the dateUtil string locally , instead of accessing aw.plus_paidUntil which might not yet have been set via the signal processing above
-                        try:
-                            if paidUntil != '' and (
-                                dateutil.parser.parse(paidUntil).date()
-    #                            - datetime.datetime.now().date()  # DTZ005 The use of `datetime.datetime.now()` without `tz` argument is not allowed
-                                - datetime.datetime.now(datetime.UTC).date()
-                            ).days < (-config.expired_subscription_max_days):
-                                _log.debug(
-                                        '-> authentication failed due to'
-                                        ' long expired subscription'
-                                )
-                                if 'error' in res:
-                                    aw.sendmessage(
-                                        res['error']
-                                    )  # @UndefinedVariable
-                                clearCredentials()
-                                return False
-                        except Exception as e:  # pylint: disable=broad-except
-                            _log.exception(e)
-
-                    if 'readonly' in res['result']['user'] and isinstance(
-                        res['result']['user']['readonly'], bool
-                    ):
-                        aw.plus_readonly = res['result']['user'][
-                            'readonly'
-                        ]
-                    else:
-                        aw.plus_readonly = False
-                    #
-                    setToken(res['result']['user']['token'], nickname)
-                    if (
-                        'account' in res['result']['user']
-                        and '_id' in res['result']['user']['account']
-                    ):
-                        account_nr = account.setAccount(
-                            res['result']['user']['account']['_id']
-                        )
-                        config.account_nr = account_nr
-                        _log.debug(
-                            '-> account: %s', account_nr
-                        )
-                    return True
+                    return _apply_auth_response(res)
                 _log.debug('-> authentication failed')
                 if 'error' in res:
-                    aw.sendmessage(
-                        res['error']
-                    )  # @UndefinedVariable
+                    aw.sendmessage(res['error'])
                 clearCredentials()
                 return False
             _log.error('204: empty response')
@@ -310,7 +310,6 @@ def authentify() -> bool:
             aw.sendmessage('SSLError')
         raise e
     except requests.exceptions.RequestException as e:
-        # most likely some protocol issue
         _log.info(e)
         raise e
     except json.decoder.JSONDecodeError as e:
@@ -321,6 +320,161 @@ def authentify() -> bool:
         _log.exception(e)
         clearCredentials()
         raise e
+
+
+def refreshSession() -> bool:
+    aw = config.app_window
+    if aw is None:
+        return False
+    refresh_token = getRefreshToken()
+    if refresh_token is None:
+        return False
+    try:
+        refresh_semaphore.acquire(1)
+        current_refresh_token = getRefreshToken()
+        if current_refresh_token is None:
+            return False
+        response = sendData(
+            config.refresh_url,
+            {'refreshToken': current_refresh_token},
+            'POST',
+            False,
+        )
+        if response.status_code == 204:
+            clearCredentials(remove_from_keychain=False)
+            return False
+        if not response.headers['content-type'].strip().startswith('application/json'):
+            clearCredentials(remove_from_keychain=False)
+            return False
+        return _apply_auth_response(response.json(), preserve_refresh_token=True)
+    except Exception as e:  # pylint: disable=broad-except
+        _log.exception(e)
+        clearCredentials(remove_from_keychain=False)
+        return False
+    finally:
+        if refresh_semaphore.available() < 1:
+            refresh_semaphore.release(1)
+
+
+def restoreSession() -> bool:
+    aw = config.app_window
+    if aw is None or aw.plus_email is None:
+        return False
+    try:
+        import keyring
+
+        refresh_token = keyring.get_password(
+            config.app_name, _get_refresh_token_key(aw.plus_email)
+        )
+    except Exception as e:  # pylint: disable=broad-except
+        _log.exception(e)
+        return False
+    if refresh_token is None:
+        return False
+    aw.plus_account = aw.plus_email
+    setRefreshToken(refresh_token)
+    return refreshSession()
+
+
+def persistRefreshToken(account: str, refresh_token: str|None, remember: bool) -> None:
+    try:
+        import keyring
+
+        key = _get_refresh_token_key(account)
+        if remember and refresh_token is not None:
+            keyring.set_password(config.app_name, key, refresh_token)
+        else:
+            keyring.delete_password(config.app_name, key)
+    except Exception as e:  # pylint: disable=broad-except
+        _log.exception(e)
+
+
+def logout() -> bool:
+    token = getToken()
+    if token is None:
+        clearCredentials()
+        return True
+    try:
+        response = requests.post(
+            config.logout_url,
+            headers=getHeaders(True),
+            verify=config.verify_ssl,
+            timeout=(config.connect_timeout, getReadTimeout()),
+        )
+        return response.status_code < 400
+    except Exception as e:  # pylint: disable=broad-except
+        _log.exception(e)
+        return False
+    finally:
+        clearCredentials()
+
+
+def hasRememberedSession(account: str|None) -> bool:
+    if account is None:
+        return False
+    try:
+        import keyring
+
+        return keyring.get_password(
+            config.app_name, _get_refresh_token_key(account)
+        ) is not None
+    except Exception as e:  # pylint: disable=broad-except
+        _log.exception(e)
+        return False
+
+
+def clearRememberedSession(account: str|None) -> None:
+    if account is None:
+        return
+    try:
+        import keyring
+
+        keyring.delete_password(config.app_name, _get_refresh_token_key(account))
+    except Exception as e:  # pylint: disable=broad-except
+        _log.exception(e)
+
+
+def rememberSession(account: str|None, remember: bool) -> None:
+    if account is None:
+        return
+    if remember:
+        persistRefreshToken(account, getRefreshToken(), True)
+    else:
+        clearRememberedSession(account)
+        try:
+            import keyring
+            keyring.delete_password(config.app_name, account)
+        except Exception as e:  # pylint: disable=broad-except
+            _log.exception(e)
+
+
+def isRememberedSessionAvailable(account: str|None) -> bool:
+    return hasRememberedSession(account)
+
+
+def ensureAuthenticatedSession(interactive: bool = True) -> bool:
+    aw = config.app_window
+    if aw is None:
+        return False
+    if getToken() is not None and config.connected:
+        return True
+    if restoreSession():
+        config.connected = True
+        return True
+    if not interactive:
+        return False
+    return authentify()
+
+
+def isSessionRestorable() -> bool:
+    aw = config.app_window
+    if aw is None:
+        return False
+    return hasRememberedSession(aw.plus_email)
+
+
+def removeRememberedSession(account: str|None) -> None:
+    clearRememberedSession(account)
 
 
 def getHeaders(
@@ -400,8 +554,7 @@ def sendData(
         _log.debug('-> status %s, time %s', r.status_code, r.elapsed.total_seconds())
         if authorized and r.status_code == 401:  # authorisation failed
             _log.debug('-> session token outdated (401)')
-            # we re-authentify by renewing the session token and try again
-            if authentify():
+            if refreshSession():
                 time.sleep(0.3) # a little delay not to stress out the server too much
                 headers, postdata = getHeadersAndData(
                     authorized, compress, jsondata, verb
@@ -450,10 +603,9 @@ def getData(url: str, authorized: bool = True, params:dict[str,str]|None = None)
         _log.debug('-> time %s', r.elapsed.total_seconds())
         if authorized and r.status_code == 401:  # authorisation failed
             _log.debug(
-                '-> session token outdated (404) - re-authentify'
+                '-> session token outdated (401) - refresh session'
             )
-            # we re-authentify by renewing the session token and try again
-            if authentify():
+            if refreshSession():
                 time.sleep(0.3) # a little delay not to stress out the server too much
                 headers = getHeaders(authorized)  # recreate header with new token
                 r = requests.get(
@@ -465,7 +617,6 @@ def getData(url: str, authorized: bool = True, params:dict[str,str]|None = None)
                 )
                 updateReadTimeoutOnSuccess()
                 _log.debug('-> status %s', r.status_code)
-                #        _log.debug("-> headers %s",r.headers)
                 _log.debug(
                     'on retry: -> time %s', r.elapsed.total_seconds()
                 )
