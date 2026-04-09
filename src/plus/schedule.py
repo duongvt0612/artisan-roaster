@@ -3150,7 +3150,7 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
                         'end_weight': weight,
                         'roast_id': item.roastUUID.hex,
                         'modified_at': epoch2ISO8601(time.time())}
-                    r = plus.connection.sendData(plus.config.roast_url, changes, 'POST')
+                    r = plus.connection.sendData(plus.config.get_roast_url(), changes, 'POST')
                     r.raise_for_status()
                     # update successfully transmitted, we now also add/update the CompletedItem linked to self.selected_completed_item
                     item.update_completed_item(self.aw, changes)
@@ -3565,7 +3565,7 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
                         changes['modified_at'] = epoch2ISO8601(time.time())
                         try:
                             plus.controller.connect(clear_on_failure=False, interactive=False)
-                            r = plus.connection.sendData(plus.config.roast_url, changes, 'POST')
+                            r = plus.connection.sendData(plus.config.get_roast_url(), changes, 'POST')
                             r.raise_for_status()
                             # update successfully transmitted, we now also add/update the CompletedItem linked to self.selected_completed_item
                             self.selected_completed_item.data.update_completed_item(self.aw, changes)

@@ -70,7 +70,7 @@ def retrieveNotifications() -> None:
                 else:
                     params = None
                 # fetch from server
-                d = connection.getData(config.notifications_url, params=params)
+                d = connection.getData(config.get_notifications_url(), params=params)
                 if d is not None and d.status_code != 204 and d.headers['content-type'].strip().startswith('application/json'):
                     _log.debug('-> %s', d.status_code)
                     res = d.json()

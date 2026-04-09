@@ -102,6 +102,25 @@ import pytest
 from plus import config
 
 
+@pytest.fixture
+def env_override_context() -> Generator[None, None, None]:
+    """Temporarily override plus env vars and restore them after each test."""
+    original_api = os.environ.get('ARTISAN_PLUS_API_BASE_URL')
+    original_web = os.environ.get('ARTISAN_PLUS_WEB_BASE_URL')
+
+    yield
+
+    if original_api is None:
+        os.environ.pop('ARTISAN_PLUS_API_BASE_URL', None)
+    else:
+        os.environ['ARTISAN_PLUS_API_BASE_URL'] = original_api
+    if original_web is None:
+        os.environ.pop('ARTISAN_PLUS_WEB_BASE_URL', None)
+    else:
+        os.environ['ARTISAN_PLUS_WEB_BASE_URL'] = original_web
+    importlib.reload(config)
+
+
 @pytest.fixture(scope='session', autouse=True)
 def ensure_config_isolation() -> Generator[None, None, None]:
     """
@@ -257,130 +276,87 @@ class TestServiceUrls:
         assert isinstance(config.web_base_url, str)
         assert config.web_base_url.startswith('https://')
 
-    def test_env_overrides_base_urls(self) -> None:
+    def test_env_overrides_base_urls(self, env_override_context: None) -> None:
         """Test environment variables override plus base URLs."""
-        original_api = os.environ.get('ARTISAN_PLUS_API_BASE_URL')
-        original_web = os.environ.get('ARTISAN_PLUS_WEB_BASE_URL')
+        del env_override_context
+        os.environ['ARTISAN_PLUS_API_BASE_URL'] = 'https://api.example.test/root/'
+        os.environ['ARTISAN_PLUS_WEB_BASE_URL'] = 'https://web.example.test/app/'
 
-        try:
-            os.environ['ARTISAN_PLUS_API_BASE_URL'] = 'https://api.example.test/root/'
-            os.environ['ARTISAN_PLUS_WEB_BASE_URL'] = 'https://web.example.test/app/'
+        reloaded_config = importlib.reload(config)
 
-            reloaded_config = importlib.reload(config)
+        assert reloaded_config.api_base_url == 'https://api.example.test/root'
+        assert reloaded_config.web_base_url == 'https://web.example.test/app'
+        assert reloaded_config.auth_url == 'https://api.example.test/root/accounts/users/authenticate'
+        assert reloaded_config.register_url == 'https://web.example.test/app/register'
 
-            assert reloaded_config.api_base_url == 'https://api.example.test/root'
-            assert reloaded_config.web_base_url == 'https://web.example.test/app'
-            assert reloaded_config.auth_url == 'https://api.example.test/root/accounts/users/authenticate'
-            assert reloaded_config.register_url == 'https://web.example.test/app/register'
-        finally:
-            if original_api is None:
-                os.environ.pop('ARTISAN_PLUS_API_BASE_URL', None)
-            else:
-                os.environ['ARTISAN_PLUS_API_BASE_URL'] = original_api
-            if original_web is None:
-                os.environ.pop('ARTISAN_PLUS_WEB_BASE_URL', None)
-            else:
-                os.environ['ARTISAN_PLUS_WEB_BASE_URL'] = original_web
-            importlib.reload(config)
-
-    def test_default_base_urls_when_env_missing(self) -> None:
+    def test_default_base_urls_when_env_missing(self, env_override_context: None) -> None:
         """Test default cloud URLs are used when env vars are unset."""
-        original_api = os.environ.get('ARTISAN_PLUS_API_BASE_URL')
-        original_web = os.environ.get('ARTISAN_PLUS_WEB_BASE_URL')
+        del env_override_context
+        os.environ.pop('ARTISAN_PLUS_API_BASE_URL', None)
+        os.environ.pop('ARTISAN_PLUS_WEB_BASE_URL', None)
 
-        try:
-            os.environ.pop('ARTISAN_PLUS_API_BASE_URL', None)
-            os.environ.pop('ARTISAN_PLUS_WEB_BASE_URL', None)
+        reloaded_config = importlib.reload(config)
 
-            reloaded_config = importlib.reload(config)
+        assert reloaded_config.api_base_url == 'https://artisan.plus/api/v1'
+        assert reloaded_config.web_base_url == 'https://artisan.plus'
 
-            assert reloaded_config.api_base_url == 'https://artisan.plus/api/v1'
-            assert reloaded_config.web_base_url == 'https://artisan.plus'
-        finally:
-            if original_api is None:
-                os.environ.pop('ARTISAN_PLUS_API_BASE_URL', None)
-            else:
-                os.environ['ARTISAN_PLUS_API_BASE_URL'] = original_api
-            if original_web is None:
-                os.environ.pop('ARTISAN_PLUS_WEB_BASE_URL', None)
-            else:
-                os.environ['ARTISAN_PLUS_WEB_BASE_URL'] = original_web
-            importlib.reload(config)
-
-    def test_env_values_are_normalized_without_trailing_slash(self) -> None:
+    def test_env_values_are_normalized_without_trailing_slash(self, env_override_context: None) -> None:
         """Test env URL values are normalized before deriving endpoints."""
-        original_api = os.environ.get('ARTISAN_PLUS_API_BASE_URL')
-        original_web = os.environ.get('ARTISAN_PLUS_WEB_BASE_URL')
+        del env_override_context
+        os.environ['ARTISAN_PLUS_API_BASE_URL'] = 'https://api.example.test///'
+        os.environ['ARTISAN_PLUS_WEB_BASE_URL'] = 'https://web.example.test///'
 
-        try:
-            os.environ['ARTISAN_PLUS_API_BASE_URL'] = 'https://api.example.test///'
-            os.environ['ARTISAN_PLUS_WEB_BASE_URL'] = 'https://web.example.test///'
+        reloaded_config = importlib.reload(config)
 
-            reloaded_config = importlib.reload(config)
+        assert reloaded_config.api_base_url == 'https://api.example.test'
+        assert reloaded_config.web_base_url == 'https://web.example.test'
+        assert reloaded_config.lock_schedule_url == 'https://api.example.test/aschedule/lock'
+        assert reloaded_config.reset_passwd_url == 'https://web.example.test/resetPassword'
 
-            assert reloaded_config.api_base_url == 'https://api.example.test'
-            assert reloaded_config.web_base_url == 'https://web.example.test'
-            assert reloaded_config.lock_schedule_url == 'https://api.example.test/aschedule/lock'
-            assert reloaded_config.reset_passwd_url == 'https://web.example.test/resetPassword'
-        finally:
-            if original_api is None:
-                os.environ.pop('ARTISAN_PLUS_API_BASE_URL', None)
-            else:
-                os.environ['ARTISAN_PLUS_API_BASE_URL'] = original_api
-            if original_web is None:
-                os.environ.pop('ARTISAN_PLUS_WEB_BASE_URL', None)
-            else:
-                os.environ['ARTISAN_PLUS_WEB_BASE_URL'] = original_web
-            importlib.reload(config)
-
-    def test_web_and_api_urls_can_be_http_for_runtime_local_use(self) -> None:
+    def test_web_and_api_urls_can_be_http_for_runtime_local_use(self, env_override_context: None) -> None:
         """Test runtime env can provide local HTTP endpoints."""
-        original_api = os.environ.get('ARTISAN_PLUS_API_BASE_URL')
-        original_web = os.environ.get('ARTISAN_PLUS_WEB_BASE_URL')
+        del env_override_context
+        os.environ['ARTISAN_PLUS_API_BASE_URL'] = 'http://localhost:10301/api'
+        os.environ['ARTISAN_PLUS_WEB_BASE_URL'] = 'http://localhost:10300'
 
-        try:
-            os.environ['ARTISAN_PLUS_API_BASE_URL'] = 'http://localhost:10301/api'
-            os.environ['ARTISAN_PLUS_WEB_BASE_URL'] = 'http://localhost:10300'
+        reloaded_config = importlib.reload(config)
 
-            reloaded_config = importlib.reload(config)
+        assert reloaded_config.api_base_url == 'http://localhost:10301/api'
+        assert reloaded_config.web_base_url == 'http://localhost:10300'
+        assert reloaded_config.notifications_url == 'http://localhost:10301/api/notifications'
+        assert reloaded_config.register_url == 'http://localhost:10300/register'
 
-            assert reloaded_config.api_base_url == 'http://localhost:10301/api'
-            assert reloaded_config.web_base_url == 'http://localhost:10300'
-            assert reloaded_config.notifications_url == 'http://localhost:10301/api/notifications'
-            assert reloaded_config.register_url == 'http://localhost:10300/register'
-        finally:
-            if original_api is None:
-                os.environ.pop('ARTISAN_PLUS_API_BASE_URL', None)
-            else:
-                os.environ['ARTISAN_PLUS_API_BASE_URL'] = original_api
-            if original_web is None:
-                os.environ.pop('ARTISAN_PLUS_WEB_BASE_URL', None)
-            else:
-                os.environ['ARTISAN_PLUS_WEB_BASE_URL'] = original_web
-            importlib.reload(config)
-
-    def test_shop_base_url_remains_constant(self) -> None:
+    def test_shop_base_url_remains_constant(self, env_override_context: None) -> None:
         """Test shop URL stays separate from plus env base URLs."""
-        original_api = os.environ.get('ARTISAN_PLUS_API_BASE_URL')
-        original_web = os.environ.get('ARTISAN_PLUS_WEB_BASE_URL')
+        del env_override_context
+        os.environ['ARTISAN_PLUS_API_BASE_URL'] = 'https://api.example.test/root'
+        os.environ['ARTISAN_PLUS_WEB_BASE_URL'] = 'https://web.example.test/app'
 
-        try:
-            os.environ['ARTISAN_PLUS_API_BASE_URL'] = 'https://api.example.test/root'
-            os.environ['ARTISAN_PLUS_WEB_BASE_URL'] = 'https://web.example.test/app'
+        reloaded_config = importlib.reload(config)
 
-            reloaded_config = importlib.reload(config)
+        assert reloaded_config.shop_base_url == 'https://buy.artisan.plus/'
 
-            assert reloaded_config.shop_base_url == 'https://buy.artisan.plus/'
-        finally:
-            if original_api is None:
-                os.environ.pop('ARTISAN_PLUS_API_BASE_URL', None)
-            else:
-                os.environ['ARTISAN_PLUS_API_BASE_URL'] = original_api
-            if original_web is None:
-                os.environ.pop('ARTISAN_PLUS_WEB_BASE_URL', None)
-            else:
-                os.environ['ARTISAN_PLUS_WEB_BASE_URL'] = original_web
-            importlib.reload(config)
+    def test_base_url_getters_follow_env_changes_without_reload(self, env_override_context: None) -> None:
+        """Test URL getter functions reflect current env values without module reload."""
+        del env_override_context
+        os.environ.pop('ARTISAN_PLUS_API_BASE_URL', None)
+        os.environ.pop('ARTISAN_PLUS_WEB_BASE_URL', None)
+        importlib.reload(config)
+
+        os.environ['ARTISAN_PLUS_API_BASE_URL'] = 'https://api.dynamic.example/v2/'
+        os.environ['ARTISAN_PLUS_WEB_BASE_URL'] = 'https://web.dynamic.example/app/'
+
+        assert config.get_api_base_url() == 'https://api.dynamic.example/v2'
+        assert config.get_web_base_url() == 'https://web.dynamic.example/app'
+        assert config.get_auth_url() == 'https://api.dynamic.example/v2/accounts/users/authenticate'
+        assert config.get_register_url() == 'https://web.dynamic.example/app/register'
+
+    def test_exported_url_constants_remain_plain_strings(self) -> None:
+        """Test exported URL constants are plain strings, not lazy proxy objects."""
+        assert type(config.api_base_url) is str
+        assert type(config.web_base_url) is str
+        assert type(config.auth_url) is str
+        assert type(config.register_url) is str
 
 
 
@@ -650,6 +626,11 @@ class TestRuntimeVariables:
         # Assert
         assert config.nickname is None
 
+    def test_refresh_token_initial_value(self) -> None:
+        """Test refresh token initial value."""
+        # Assert
+        assert config.get_refresh_token() is None
+
     def test_account_nr_initial_value(self) -> None:
         """Test account_nr initial value."""
         # Assert
@@ -660,18 +641,22 @@ class TestRuntimeVariables:
         # Arrange
         original_connected = config.connected
         original_token = config.get_token()
+        original_refresh_token = config.get_refresh_token()
 
         # Act
         config.connected = True
         config.set_token('test_token_123')
+        config.set_refresh_token('refresh_token_123')
 
         # Assert
         assert config.connected is True
         assert config.get_token() == 'test_token_123'
+        assert config.get_refresh_token() == 'refresh_token_123'
 
         # Cleanup - restore original values
         config.connected = original_connected
         config.set_token(original_token)
+        config.set_refresh_token(original_refresh_token)
 
 
 class TestConfigurationValidation:

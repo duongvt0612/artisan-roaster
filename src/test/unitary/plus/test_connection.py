@@ -620,7 +620,7 @@ class TestSessionPersistence:
         ) as mock_post, patch('plus.connection.config') as mock_config, patch(
             'plus.connection.clearCredentials'
         ) as mock_clear_credentials:
-            mock_config.logout_url = 'https://artisan.plus/api/v1/auth/logout'
+            mock_config.get_logout_url.return_value = 'https://artisan.plus/api/v1/auth/logout'
             mock_config.verify_ssl = True
             mock_config.connect_timeout = 6
 

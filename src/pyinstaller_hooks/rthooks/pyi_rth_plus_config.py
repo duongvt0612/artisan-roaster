@@ -1,7 +1,11 @@
 import json
+import logging
 import os
 import sys
 from pathlib import Path
+
+
+_log = logging.getLogger(__name__)
 
 
 ENV_FILENAME = 'artisan-plus-env.json'
@@ -25,7 +29,8 @@ def _load_packaged_plus_env() -> None:
 
     try:
         payload = json.loads(env_file.read_text(encoding='utf-8'))
-    except Exception:
+    except Exception as e:
+        _log.warning('Failed to load packaged plus env from %s: %s', env_file.name, e)
         return
 
     if not isinstance(payload, dict):

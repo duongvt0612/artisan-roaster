@@ -116,7 +116,7 @@ def sendPlusNotificationSeen(hr_id:str, date:datetime.datetime) -> None:
     _log.debug('sendPlusNotificationSeen(%s,%s)', hr_id, date.isoformat())
     try:
         plus.connection.sendData(
-            f'{plus.config.notifications_url}/seen/{hr_id}',
+            f'{plus.config.get_notifications_url()}/seen/{hr_id}',
             { 'date' : date.isoformat()},
             'PUT')
     except Exception as e: # pylint: disable=broad-except

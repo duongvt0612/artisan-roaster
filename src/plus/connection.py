@@ -282,7 +282,7 @@ def authentify() -> bool:
                 'username': aw.plus_account,
                 'password': config.passwd,
             }
-            r = sendData(config.auth_url, data, 'POST', False)
+            r = sendData(config.get_auth_url(), data, 'POST', False)
             _log.debug('-> authentifying reply status code: %s', r.status_code)
             if r.status_code != 204 and r.headers['content-type'].strip().startswith('application/json'):
                 res = r.json()
@@ -335,7 +335,7 @@ def refreshSession() -> bool:
         if current_refresh_token is None:
             return False
         response = sendData(
-            config.refresh_url,
+            config.get_refresh_url(),
             {'refreshToken': current_refresh_token},
             'POST',
             False,
@@ -396,7 +396,7 @@ def logout() -> bool:
         return True
     try:
         response = requests.post(
-            config.logout_url,
+            config.get_logout_url(),
             headers=getHeaders(True),
             verify=config.verify_ssl,
             timeout=(config.connect_timeout, getReadTimeout()),

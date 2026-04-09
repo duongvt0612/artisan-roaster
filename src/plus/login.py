@@ -130,7 +130,7 @@ class Login(ArtisanDialog):
         self.rememberCheckbox.stateChanged.connect(self.rememberCheckChanged)
 
         self.guideButton = QLabel(
-            f'<small><a href="{config.user_guide_url}">{QApplication.translate('Plus', 'Xem hướng dẫn sử dụng')}</a></small>'
+            f'<small><a href="{config.get_user_guide_url()}">{QApplication.translate('Plus', 'Xem hướng dẫn sử dụng')}</a></small>'
         )
         self.guideButton.setOpenExternalLinks(True)
 
@@ -189,7 +189,7 @@ class Login(ArtisanDialog):
         passwd = self.textPass.text()
         return (
             len(passwd) >= config.min_passwd_len
-            and len(login) >= config.min_login_len
+            and bool(login)
         )
 
     @pyqtSlot(str)

@@ -536,16 +536,15 @@ class TestLoginDialogValidation:
             # Assert
             assert result is False
 
-    def test_is_input_reasonable_short_login(self, mock_parent_widget:Mock, mock_app_window:Mock) -> None:
-        """Test isInputReasonable returns False for short login."""
+    def test_is_input_reasonable_non_blank_short_login(self, mock_parent_widget:Mock, mock_app_window:Mock) -> None:
+        """Test isInputReasonable accepts non-blank usernames regardless of length."""
         # Arrange
         with patch('plus.login.ArtisanDialog.__init__') as mock_super_init:
             mock_super_init.return_value = None
             dialog = login.Login(mock_parent_widget, mock_app_window)
 
-            # Mock text inputs
             dialog.textName = Mock()
-            dialog.textName.text = Mock(return_value='user')  # Too short
+            dialog.textName.text = Mock(return_value='user')
             dialog.textPass = Mock()
             dialog.textPass.text = Mock(return_value='password123')
 
@@ -553,7 +552,7 @@ class TestLoginDialogValidation:
             result = dialog.isInputReasonable()
 
             # Assert
-            assert result is False
+            assert result is True
 
 
 
