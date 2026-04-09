@@ -72,6 +72,12 @@ def start(app_window:'ApplicationWindow') -> None:
     QTimer.singleShot(2, connect)
 
 
+def require_startup_login(app_window:'ApplicationWindow') -> bool:
+    config.app_window = app_window
+    connect(interactive=True)
+    return bool(config.connected)
+
+
 # toggles between connected and disconnected modes. If connected and
 # not is_synced() send current data to server
 def toggle(app_window:'ApplicationWindow') -> None:
@@ -225,6 +231,13 @@ def connect(clear_on_failure: bool =False, interactive: bool = True) -> None:
                                         True,
                                         None,
                                     )  # @UndefinedVariable
+                        elif login is not None:
+                            try:
+                                keyring.delete_password(
+                                    config.app_name, login
+                                )
+                            except Exception as e:  # pylint: disable=broad-except
+                                _log.exception(e)
                         # remember password in memory for this session
                         config.passwd = passwd
             if aw is not None:

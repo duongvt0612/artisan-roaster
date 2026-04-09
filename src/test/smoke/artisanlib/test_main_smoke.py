@@ -132,6 +132,10 @@ class MockQApplication:
     def instance():
         return None
 
+    @staticmethod
+    def setLayoutDirection(_direction: Any) -> None:
+        return None
+
     def __init__(self, *_args:Any, **_kwargs:Any) -> None:
         self.processEvents = Mock()
         self.quit = Mock()
@@ -183,9 +187,10 @@ class MockQSettings:
 class MockQTimer:
     """Mock QTimer for timing functionality."""
 
+    singleShot = Mock()
+
     def __init__(self, *_args:Any, **_kwargs:Any) -> None:
         self.timeout = Mock()
-        self.singleShot = Mock()
         self.start = Mock()
         self.stop = Mock()
         self.setInterval = Mock()
@@ -345,14 +350,22 @@ with patch.dict('sys.modules', mock_modules, clear=False), patch(
 ):
     try:
         # Import the main module with comprehensive mocking
+        import artisanlib.main as main_module
         from artisanlib.main import Artisan, app
 
         IMPORT_SUCCESS = True
     except Exception:
         # If import fails, create mock instances for testing
         IMPORT_SUCCESS = False
+        main_module = Mock()
         Artisan = MockQtSingleApplication  # type: ignore[assignment]
         app = MockQtSingleApplication()  # type: ignore[assignment]
+
+        def _missing_startup_gate(*_args:Any, **_kwargs:Any) -> bool:
+            return False
+
+        main_module.ensure_startup_login = _missing_startup_gate
+        main_module.app = app
 
 
 @pytest.fixture(autouse=True)
@@ -368,6 +381,153 @@ def reset_main_smoke_state() -> Generator[None, None, None]:
 
     # Clean up after each test - reset any global state
     # Note: Artisan and app instances are created fresh in each test via mocking
+
+
+class TestStartupLoginGate:
+    """Test startup login gating helpers."""
+
+    @staticmethod
+    def _require_real_main_import() -> None:
+        if not IMPORT_SUCCESS:
+            pytest.skip('startup smoke coverage requires importing artisanlib.main successfully')
+
+    def test_ensure_startup_login_returns_controller_result(self) -> None:
+        """Test startup gate delegates to plus.controller.require_startup_login."""
+        self._require_real_main_import()
+        mock_window = Mock()
+        with patch.object(main_module.plus.controller, 'require_startup_login', return_value=True) as mock_require:
+            result = main_module.ensure_startup_login(mock_window)
+
+            assert result is True
+            mock_require.assert_called_once_with(mock_window)
+
+    def test_failed_startup_login_exits_with_failure_status(self) -> None:
+        """Test failed startup login exits with a non-zero status code."""
+        self._require_real_main_import()
+        with patch.object(main_module, 'ensure_startup_login', return_value=False), patch.object(
+            main_module, 'ApplicationWindow'
+        ) as mock_window_class, patch.object(
+            main_module, 'initialize_locale', return_value='en'
+        ), patch.object(
+            main_module, 'getDocumentsDirectory', return_value=None
+        ), patch.object(
+            main_module, 'debugLogLevelActive', return_value=False
+        ), patch.object(
+            main_module.app, 'setActivationWindow'
+        ), patch.object(
+            main_module.QApplication, 'setLayoutDirection'
+        ), patch.object(
+            main_module, 'QSettings'
+        ) as mock_qsettings, patch.object(
+            main_module.libtime, 'process_time', side_effect=[0.0, 0.1]
+        ), patch.object(
+            main_module._log, 'info'
+        ), patch.object(
+            main_module.sys, 'argv', ['artisan']
+        ), patch.object(
+            main_module.sys, 'exit', side_effect=SystemExit(1)
+        ) as mock_exit:
+            mock_window = Mock()
+            mock_window.defaultSettings = {}
+            mock_window.ui_mode = 'standard'
+            mock_window.qmc = Mock()
+            mock_window_class.return_value = mock_window
+            mock_qsettings.return_value.allKeys.return_value = []
+            main_module.app.artisanviewerMode = False
+
+            with pytest.raises(SystemExit) as exc_info:
+                main_module.main()
+
+            assert exc_info.value.code == 1
+            mock_exit.assert_called_once_with(1)
+            mock_window.show.assert_not_called()
+
+    def test_secondary_instance_handoff_skips_startup_login(self) -> None:
+        """Test secondary-instance file handoff exits before startup login."""
+        self._require_real_main_import()
+        with patch.object(main_module, 'ensure_startup_login') as mock_startup_login, patch.object(
+            main_module, 'ApplicationWindow'
+        ) as mock_window_class, patch.object(
+            main_module, 'initialize_locale', return_value='en'
+        ), patch.object(
+            main_module, 'getDocumentsDirectory', return_value=None
+        ), patch.object(
+            main_module, 'debugLogLevelActive', return_value=False
+        ), patch.object(
+            main_module.platform, 'system', return_value='Linux'
+        ), patch.object(
+            main_module.app, 'setActivationWindow'
+        ), patch.object(
+            main_module.app, 'isRunning', return_value=True
+        ), patch.object(
+            main_module.app, 'sendMessage'
+        ) as mock_send_message, patch.object(
+            main_module.QApplication, 'setLayoutDirection'
+        ), patch.object(
+            main_module, 'QSettings'
+        ) as mock_qsettings, patch.object(
+            main_module.libtime, 'process_time', side_effect=[0.0, 0.1]
+        ), patch.object(
+            main_module._log, 'info'
+        ), patch.object(
+            main_module.sys, 'argv', ['artisan', '/tmp/test.alog']
+        ), patch.object(
+            main_module.sys, 'exit', side_effect=SystemExit(0)
+        ) as mock_exit:
+            mock_window = Mock()
+            mock_window.defaultSettings = {}
+            mock_window.ui_mode = 'standard'
+            mock_window.qmc = Mock()
+            mock_window_class.return_value = mock_window
+            mock_qsettings.return_value.allKeys.return_value = []
+            main_module.app.artisanviewerMode = False
+
+            with pytest.raises(SystemExit) as exc_info:
+                main_module.main()
+
+            assert exc_info.value.code == 0
+            mock_send_message.assert_called_once_with('/tmp/test.alog')
+            mock_startup_login.assert_not_called()
+            mock_window.show.assert_not_called()
+
+    def test_artisanviewer_mode_skips_startup_login(self) -> None:
+        """Test Artisan Viewer mode does not require startup login."""
+        self._require_real_main_import()
+        with patch.object(main_module, 'ensure_startup_login') as mock_startup_login, patch.object(
+            main_module, 'ApplicationWindow'
+        ) as mock_window_class, patch.object(
+            main_module, 'initialize_locale', return_value='en'
+        ), patch.object(
+            main_module, 'getDocumentsDirectory', return_value=None
+        ), patch.object(
+            main_module, 'debugLogLevelActive', return_value=False
+        ), patch.object(
+            main_module.app, 'setActivationWindow'
+        ), patch.object(
+            main_module.QApplication, 'setLayoutDirection'
+        ), patch.object(
+            main_module, 'QSettings'
+        ) as mock_qsettings, patch.object(
+            main_module.libtime, 'process_time', side_effect=[0.0, 0.1]
+        ), patch.object(
+            main_module._log, 'info'
+        ), patch.object(
+            main_module.sys, 'argv', ['artisan']
+        ):
+            mock_window = Mock()
+            mock_window.defaultSettings = {}
+            mock_window.ui_mode = 'standard'
+            mock_window.qmc = Mock()
+            mock_window_class.return_value = mock_window
+            mock_qsettings.return_value.allKeys.return_value = []
+            main_module.app.artisanviewerMode = True
+
+            main_module.main()
+
+            mock_startup_login.assert_not_called()
+            mock_window.show.assert_called_once()
+            main_module.app.artisanviewerMode = False
+            mock_window.show.reset_mock()
 
 
 class TestArtisan:

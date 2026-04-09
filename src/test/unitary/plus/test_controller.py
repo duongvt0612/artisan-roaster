@@ -123,8 +123,11 @@ class MockQTimer:
 
 class MockQApplication:
     def __init__(self) -> None:
-        self.keyboardModifiers = Mock(return_value=0)
         self.style = Mock(return_value=Mock())
+
+    @staticmethod
+    def keyboardModifiers() -> int:
+        return 0
 
     @staticmethod
     def translate(_context: str, text: str) -> str:
@@ -462,6 +465,41 @@ class TestStartFunction:
             mock_timer.singleShot.assert_called_once_with(2, controller.connect)
 
 
+class TestStartupLoginRequirement:
+    """Test startup login gate behavior."""
+
+    def test_require_startup_login_returns_true_on_success(self, mock_app_window:Mock) -> None:
+        """Test startup login helper succeeds only when connection was established."""
+        with patch('plus.controller.config') as mock_config, patch(
+            'plus.controller.connect'
+        ) as mock_connect:
+            mock_config.connected = False
+
+            def connect_success(*_args:Any, **_kwargs:Any) -> None:
+                mock_config.connected = True
+
+            mock_connect.side_effect = connect_success
+
+            result = controller.require_startup_login(mock_app_window)
+
+            assert result is True
+            assert mock_config.app_window == mock_app_window
+            mock_connect.assert_called_once_with(interactive=True)
+
+    def test_require_startup_login_returns_false_on_cancel_or_failure(self, mock_app_window:Mock) -> None:
+        """Test startup login helper fails when connect does not establish a session."""
+        with patch('plus.controller.config') as mock_config, patch(
+            'plus.controller.connect'
+        ) as mock_connect:
+            mock_config.connected = False
+
+            result = controller.require_startup_login(mock_app_window)
+
+            assert result is False
+            assert mock_config.app_window == mock_app_window
+            mock_connect.assert_called_once_with(interactive=True)
+
+
 class TestToggleFunction:
     """Test toggle function."""
 
@@ -701,6 +739,32 @@ class TestConnectFunction:
             # Assert
             mock_app_window.sendmessageSignal.emit.assert_called()
             # Should emit "Login aborted" message
+
+    def test_connect_remember_false_deletes_existing_keyring_password(
+        self, mock_app_window: Mock, mock_qsemaphore: Mock
+    ) -> None:
+        """Test connect removes persisted password when user disables remember."""
+        mock_app_window.plus_account = None
+        login_response = ('test@example.com', 'password123', False, True)
+
+        with patch('plus.controller.is_connected', return_value=False), patch(
+            'plus.controller.connect_semaphore', mock_qsemaphore
+        ), patch('plus.controller.config') as mock_config, patch(
+            'plus.controller.connection'
+        ) as mock_connection, patch(
+            'plus.login.plus_login', return_value=login_response
+        ), patch(
+            'keyring.delete_password'
+        ) as mock_delete_password:
+            mock_config.app_window = mock_app_window
+            mock_config.passwd = None
+            mock_config.app_name = 'artisan.plus'
+            mock_connection.authentify = Mock(return_value=True)
+            mock_qsemaphore.available.return_value = 0
+
+            controller.connect(interactive=True)
+
+            mock_delete_password.assert_called_once_with('artisan.plus', 'test@example.com')
 
     def test_connect_clear_on_failure(self, mock_app_window: Mock, mock_qsemaphore: Mock) -> None:
         """Test connect clears credentials on failure when clear_on_failure=True."""
