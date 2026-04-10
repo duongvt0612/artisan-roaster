@@ -19504,12 +19504,6 @@ class ApplicationWindow(QMainWindow):
                 if self.fullscreenAction is not None and not (platform.system() == 'Darwin' and self.qmc.locale_str == 'en'):
                     self.fullscreenAction.setChecked(True)
 
-            if filename is None and self.plus_account is not None:
-                try:
-                    plus.controller.start(self)
-                except Exception as e: # pylint: disable=broad-except
-                    _log.exception(e)
-
             # this one has done here, if it is done on start of the section the slider title colors are not set correctly on Linux and macOS
             if 'canvas' in self.qmc.palette:
                 self.updateCanvasColors(checkColors=False)
@@ -27861,6 +27855,15 @@ def initialize_locale(my_app:Artisan) -> str:
 
     return locale
 
+def ensure_startup_login(app_window:'ApplicationWindow') -> bool:
+    try:
+        return plus.controller.require_startup_login(app_window)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception('Startup login failed: %s', e)
+        return False
+
+
 def main() -> None:
 
 
@@ -27919,8 +27922,6 @@ def main() -> None:
     if debugLogLevelActive():
         appWindow.sendmessage(QApplication.translate('Message', 'debug logging ON'))
 
-    appWindow.show()
-
     try:
         if sys.argv and len(sys.argv) > 1:
             argv_file = str(sys.argv[1])
@@ -27938,6 +27939,13 @@ def main() -> None:
                     url = QUrl()
                     url.setUrl(argv_file)
                     app.open_url(url)
+
+        if not app.artisanviewerMode and not ensure_startup_login(appWindow):
+            sys.exit(1)
+
+        appWindow.show()
+
+        if sys.argv and len(sys.argv) > 1:
             # on Linux (and RPi), local argv_file paths may contain percent encoded spaces %20 and a file:// URL prefix
             if platform.system() == 'Linux':
                 from urllib.parse import unquote_plus

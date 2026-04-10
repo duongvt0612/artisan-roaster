@@ -170,7 +170,7 @@ class Worker(QObject): # pyright: ignore [reportGeneralTypeIssues]
                                     _log.error('Response content is not valid JSON')
                                 except Exception as e:  # pylint: disable=broad-except
                                     _log.exception(e)
-                            elif 'url' in item and item['url'].startswith(config.lock_schedule_url):
+                            elif 'url' in item and item['url'].startswith(config.get_lock_schedule_url()):
                                 # this is not be a roast record, but a lock schedule message to be send to the server
                                 controller.connect(
                                     clear_on_failure=False, interactive=False
@@ -395,7 +395,7 @@ def queue_roast_item(roast_item:dict[str, Any]) -> bool:
                 ' is not running')
     elif last_queued_roast_item is None or not roast_subset_of(roast_item, last_queued_roast_item):
         queue.put(
-            {'url': config.roast_url, 'data': roast_item, 'verb': 'POST'},
+            {'url': config.get_roast_url(), 'data': roast_item, 'verb': 'POST'},
             # timeout=config.queue_put_timeout
             # sql queue does not feature a timeout
         )
@@ -495,7 +495,7 @@ def sendLockSchedule() -> None:
             )
         else:
             queue.put(
-                {'url': f'{config.lock_schedule_url}?today={datetime.datetime.now().astimezone().date()}', 'data': {}, 'verb': 'POST'},
+                {'url': f'{config.get_lock_schedule_url()}?today={datetime.datetime.now().astimezone().date()}', 'data': {}, 'verb': 'POST'},
                 # timeout=config.queue_put_timeout
                 # sql queue does not feature a timeout
             )

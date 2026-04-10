@@ -240,7 +240,7 @@ class Worker(QObject): # pyright: ignore [reportGeneralTypeIssues]
         try:
             fetch_semaphore.acquire(1)
             # fetch from server (send along the current date to have the server filter the schedule correctly for the local timezone)
-            request:str = f'{config.stock_url}?today={datetime.datetime.now().astimezone().date()}'
+            request:str = f'{config.get_stock_url()}?today={datetime.datetime.now().astimezone().date()}'
             if lsrt is not None:
                 request = f'{request}&lsrt={lsrt}'
             d = connection.getData(request)

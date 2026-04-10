@@ -23,8 +23,8 @@
 
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QGroupBox, QHBoxLayout,
     QVBoxLayout, QLabel, QLineEdit, QDialogButtonBox, QWidget)
-from PyQt6.QtCore import Qt, pyqtSlot
-from PyQt6.QtGui import QKeySequence, QAction
+from PyQt6.QtCore import Qt, pyqtSlot, QUrl
+from PyQt6.QtGui import QKeySequence, QAction, QDesktopServices
 
 import logging
 from artisanlib.dialogs import ArtisanDialog
@@ -38,7 +38,17 @@ _log: Final[logging.Logger] = logging.getLogger(__name__)
 
 class Login(ArtisanDialog):
 
-    __slots__ = [ 'login', 'passwd', 'remember', 'linkRegister', 'linkResetPassword', 'textPass', 'textName', 'rememberCheckbox' ]
+    __slots__ = [
+        'login',
+        'passwd',
+        'remember',
+        'textPass',
+        'textName',
+        'rememberCheckbox',
+        'titleLabel',
+        'subtitleLabel',
+        'guideButton',
+    ]
 
 
     def __init__(
@@ -55,22 +65,13 @@ class Login(ArtisanDialog):
         self.passwd:str|None = None
         self.remember:bool = remember_credentials
 
-        self.linkRegister = QLabel(
-            f'<small><a href="{config.register_url}">{QApplication.translate('Plus', 'Register')}</a></small>'
-        )
-        self.linkRegister.setOpenExternalLinks(True)
-        self.linkResetPassword = QLabel(
-            f'<small><a href="{config.reset_passwd_url}">{QApplication.translate('Plus', 'Reset Password')}</a></small>'
-        )
-        self.linkResetPassword.setOpenExternalLinks(True)
-
         self.dialogbuttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         self.setButtonTranslations(
             self.dialogbuttons.button(QDialogButtonBox.StandardButton.Ok),
             'OK',
-            QApplication.translate('Button', 'OK'),
+            QApplication.translate('Plus', 'Đăng nhập'),
         )
         self.setButtonTranslations(
             self.dialogbuttons.button(QDialogButtonBox.StandardButton.Cancel),
@@ -89,11 +90,9 @@ class Login(ArtisanDialog):
         self.cancel_button = self.dialogbuttons.button(QDialogButtonBox.StandardButton.Cancel)
         if self.cancel_button is not None:
             self.cancel_button.setDefault(True)
-            # add additional CMD-. shortcut to close the dialog
             self.cancel_button.setShortcut(
                 QKeySequence('Ctrl+.')
             )
-            # add additional CMD-W shortcut to close this dialog
             cancelAction:QAction = QAction(self)
             cancelAction.triggered.connect(self.reject)
             cancelAction.setShortcut(QKeySequence.StandardKey.Cancel)
@@ -101,15 +100,22 @@ class Login(ArtisanDialog):
                 [cancelAction]
             )
 
+        self.titleLabel = QLabel(
+            QApplication.translate('Plus', 'Đăng nhập')
+        )
+        self.subtitleLabel = QLabel(
+            QApplication.translate('Plus', 'Đăng nhập vào tài khoản của bạn')
+        )
+
         self.textPass:QLineEdit = QLineEdit(self)
         self.textPass.setEchoMode(QLineEdit.EchoMode.Password)
         self.textPass.setPlaceholderText(
-            QApplication.translate('Plus', 'Password')
+            QApplication.translate('Plus', 'Mật khẩu')
         )
 
         self.textName:QLineEdit = QLineEdit(self)
         self.textName.setPlaceholderText(
-            QApplication.translate('Plus', 'Email')
+            QApplication.translate('Plus', 'Tên đăng nhập')
         )
         self.textName.textChanged.connect(self.textChanged)
         if email is not None:
@@ -123,7 +129,14 @@ class Login(ArtisanDialog):
         self.rememberCheckbox.setChecked(self.remember)
         self.rememberCheckbox.stateChanged.connect(self.rememberCheckChanged)
 
+        self.guideButton = QLabel(
+            f'<small><a href="{config.get_user_guide_url()}">{QApplication.translate('Plus', 'Xem hướng dẫn sử dụng')}</a></small>'
+        )
+        self.guideButton.setOpenExternalLinks(True)
+
         credentialsLayout:QVBoxLayout = QVBoxLayout(self)
+        credentialsLayout.addWidget(self.titleLabel)
+        credentialsLayout.addWidget(self.subtitleLabel)
         credentialsLayout.addWidget(self.textName)
         credentialsLayout.addWidget(self.textPass)
         credentialsLayout.addWidget(self.rememberCheckbox)
@@ -136,16 +149,14 @@ class Login(ArtisanDialog):
         buttonLayout.addWidget(self.dialogbuttons)
         buttonLayout.addStretch()
 
-        linkLayout:QHBoxLayout = QHBoxLayout()
-        linkLayout.addStretch()
-        linkLayout.addWidget(self.linkRegister)
-        linkLayout.addStretch()
-        linkLayout.addWidget(self.linkResetPassword)
-        linkLayout.addStretch()
+        guideLayout:QHBoxLayout = QHBoxLayout()
+        guideLayout.addStretch()
+        guideLayout.addWidget(self.guideButton)
+        guideLayout.addStretch()
 
         layout:QVBoxLayout = QVBoxLayout(self)
         layout.addWidget(credentialsGroup)
-        layout.addLayout(linkLayout)
+        layout.addLayout(guideLayout)
         layout.addLayout(buttonLayout)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(5)
@@ -153,16 +164,20 @@ class Login(ArtisanDialog):
         if saved_password is not None:
             self.passwd = saved_password
             self.textPass.setText(self.passwd)
-            if self.cancel_button is not None:
-                self.cancel_button.setDefault(False)
-            if self.ok_button is not None:
-                self.ok_button.setDefault(True)
-                self.ok_button.setEnabled(True)
+            if self.isInputReasonable():
+                if self.cancel_button is not None:
+                    self.cancel_button.setDefault(False)
+                if self.ok_button is not None:
+                    self.ok_button.setDefault(True)
+                    self.ok_button.setEnabled(True)
+
+
 
     @pyqtSlot()
     @override
     def reject(self) -> None:
-        self.login = self.textName.text()
+        login = self.textName.text().strip()
+        self.login = login if login else None
         super().reject()
 
     @pyqtSlot(int)
@@ -170,13 +185,11 @@ class Login(ArtisanDialog):
         self.remember = bool(i)
 
     def isInputReasonable(self) -> bool:
-        login = self.textName.text()
+        login = self.textName.text().strip()
         passwd = self.textPass.text()
         return (
             len(passwd) >= config.min_passwd_len
-            and len(login) >= config.min_login_len
-            and '@' in login
-            and '.' in login
+            and bool(login)
         )
 
     @pyqtSlot(str)
@@ -196,7 +209,8 @@ class Login(ArtisanDialog):
 
     @pyqtSlot()
     def setCredentials(self) -> None:
-        self.login = self.textName.text()
+        login = self.textName.text().strip()
+        self.login = login if login else None
         self.passwd = self.textPass.text()
         self.accept()
 
@@ -215,4 +229,6 @@ def plus_login(
     ld.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
     res:int = ld.exec()
     login_processed:str|None = ld.login.strip() if ld.login is not None else None
+    if login_processed == '':
+        login_processed = None
     return login_processed, ld.passwd, ld.remember, res

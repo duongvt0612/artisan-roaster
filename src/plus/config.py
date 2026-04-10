@@ -22,6 +22,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import os
 from typing import Final, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -36,23 +37,94 @@ schedule_date_tag: Final[str] = 'scheduleDate' # send as 's_item_date' as part o
 
 # Service URLs
 
-# # LOCAL SETUP
-#api_base_url         = 'https://localhost:62602/api/v1'
-#web_base_url         = 'https://localhost:8088'
 
-# # CLOUD SETUP
-api_base_url: Final[str] = 'https://artisan.plus/api/v1'
-web_base_url: Final[str] = 'https://artisan.plus'
+def _normalized_base_url(value: str) -> str:
+    return value.rstrip('/')
+
+
+def _env_base_url(name: str, default: str) -> str:
+    value = os.environ.get(name, default)
+    return _normalized_base_url(value)
+
+
+def get_api_base_url() -> str:
+    return _env_base_url('ARTISAN_PLUS_API_BASE_URL', 'https://artisan.plus/api/v1')
+
+
+
+def get_web_base_url() -> str:
+    return _env_base_url('ARTISAN_PLUS_WEB_BASE_URL', 'https://artisan.plus')
+
+
+
+def get_register_url() -> str:
+    return get_web_base_url() + '/register'
+
+
+
+def get_reset_passwd_url() -> str:
+    return get_web_base_url() + '/resetPassword'
+
+
+
+def get_user_guide_url() -> str:
+    return get_web_base_url() + '/user-guide'
+
+
+
+def get_auth_url() -> str:
+    return get_api_base_url() + '/accounts/users/authenticate'
+
+
+
+def get_refresh_url() -> str:
+    return get_api_base_url() + '/auth/refresh'
+
+
+
+def get_logout_url() -> str:
+    return get_api_base_url() + '/auth/logout'
+
+
+
+def get_stock_url() -> str:
+    return get_api_base_url() + '/acoffees'
+
+
+
+def get_roast_url() -> str:
+    return get_api_base_url() + '/aroast'
+
+
+
+def get_lock_schedule_url() -> str:
+    return get_api_base_url() + '/aschedule/lock'
+
+
+
+def get_notifications_url() -> str:
+    return get_api_base_url() + '/notifications'
+
+
+api_base_url: str = get_api_base_url()
+web_base_url: str = get_web_base_url()
 
 shop_base_url: Final[str] = 'https://buy.artisan.plus/'
 
-register_url: Final[str] = web_base_url + '/register'
-reset_passwd_url: Final[str] = web_base_url + '/resetPassword'
-auth_url: Final[str] = api_base_url + '/accounts/users/authenticate'
-stock_url: Final[str] = api_base_url + '/acoffees'
-roast_url: Final[str] = api_base_url + '/aroast'
-lock_schedule_url: Final[str] = api_base_url + '/aschedule/lock'
-notifications_url: Final[str] = api_base_url + '/notifications'
+register_url: str = get_register_url()
+reset_passwd_url: str = get_reset_passwd_url()
+user_guide_url: str = get_user_guide_url()
+auth_url: str = get_auth_url()
+refresh_url: str = get_refresh_url()
+logout_url: str = get_logout_url()
+stock_url: str = get_stock_url()
+roast_url: str = get_roast_url()
+lock_schedule_url: str = get_lock_schedule_url()
+notifications_url: str = get_notifications_url()
+
+# documented local runtime override values:
+# ARTISAN_PLUS_API_BASE_URL=http://localhost:10301/api
+# ARTISAN_PLUS_WEB_BASE_URL=http://localhost:10300
 
 # Connection configurations
 
@@ -140,7 +212,29 @@ app_window: 'ApplicationWindow|None' = None  # handle to the main Artisan applic
 #   plus service connection indicator icon
 connected: bool = False  # connection status
 passwd: str|None = None
-# the session token
-token: str|None = None
+# the current access token
+access_token: str|None = None
+# refresh token used to renew the access token
+refresh_token: str|None = None
 # login nickname assigned on login with session token
 nickname: str|None = None
+
+
+def get_token() -> str|None:
+    return access_token
+
+
+def set_token(value: str|None) -> None:
+    global access_token
+    access_token = value
+
+
+
+def get_refresh_token() -> str|None:
+    return refresh_token
+
+
+
+def set_refresh_token(value: str|None) -> None:
+    global refresh_token
+    refresh_token = value

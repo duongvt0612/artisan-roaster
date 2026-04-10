@@ -1,0 +1,4 @@
+{
+  "ARTISAN_PLUS_API_BASE_URL": "http://localhost:10301/api",
+  "ARTISAN_PLUS_WEB_BASE_URL": "http://localhost:10300"
+}

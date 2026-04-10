@@ -72,6 +72,20 @@ def start(app_window:'ApplicationWindow') -> None:
     QTimer.singleShot(2, connect)
 
 
+def require_startup_login(app_window:'ApplicationWindow') -> bool:
+    config.app_window = app_window
+    if connection.restoreSession():
+        try:
+            connect_semaphore.acquire(1)
+            config.connected = True
+        finally:
+            if connect_semaphore.available() < 1:
+                connect_semaphore.release(1)
+        return True
+    connect(interactive=True)
+    return bool(config.connected)
+
+
 # toggles between connected and disconnected modes. If connected and
 # not is_synced() send current data to server
 def toggle(app_window:'ApplicationWindow') -> None:
@@ -156,7 +170,9 @@ def connect(clear_on_failure: bool =False, interactive: bool = True) -> None:
                         # running in the main GUI thread as a consequence are
                         # GUI actions which might crash in other threads
                         interactive = True
-                if account is not None:  # @UndefinedVariable
+                if not interactive and connection.restoreSession():
+                    config.connected = True
+                elif account is not None:  # @UndefinedVariable
                     try:
                         # try-catch as the keyring might not work
                         config.passwd = keyring.get_password(
@@ -173,7 +189,7 @@ def connect(clear_on_failure: bool =False, interactive: bool = True) -> None:
                             )
                     except Exception as e:  # pylint: disable=broad-except
                         _log.exception(e)
-                if interactive and (
+                if interactive and not config.connected and (
                     aw.plus_account is None
                     or config.passwd is None
                 ):  # @UndefinedVariable
@@ -189,43 +205,23 @@ def connect(clear_on_failure: bool =False, interactive: bool = True) -> None:
                     )  # @UndefinedVariable
                     if res:  # Login dialog not Canceled
                         aw.plus_remember_credentials = remember
-                        # store credentials
                         aw.plus_account = login
                         if remember:
                             aw.plus_email = login
                         else:
                             aw.plus_email = None
-                        # store the passwd in the keychain
-                        if (
-                            login is not None
-                            and passwd is not None
-                            and remember
-                        ):
+                        if login is not None and not remember:
                             try:
-                                # try-catch as the keyring might not work
-                                keyring.set_password(
-                                    config.app_name, login, passwd
-                                )
-                                _log.debug('keyring set password (%s)', login)
-                            # pylint: disable=broad-except
-                            except Exception as e:
+                                if account is not None:
+                                    keyring.delete_password(
+                                        config.app_name, account
+                                    )
+                                if account != login:
+                                    keyring.delete_password(
+                                        config.app_name, login
+                                    )
+                            except Exception as e:  # pylint: disable=broad-except
                                 _log.exception(e)
-                                if (
-                                    not platform.system().startswith('Windows')
-                                    and platform.system() != 'Darwin'
-                                ):
-                                    # on Linux remind to install
-                                    # the gnome-keyring
-                                    aw.sendmessageSignal.emit(
-                                        QApplication.translate(
-                                            'Plus',
-                                            ('Keyring error: Ensure that'
-                                             ' gnome-keyring is installed.')
-                                        ),
-                                        True,
-                                        None,
-                                    )  # @UndefinedVariable
-                        # remember password in memory for this session
                         config.passwd = passwd
             if aw is not None:
                 if aw.plus_account is None:  # @UndefinedVariable
@@ -235,10 +231,14 @@ def connect(clear_on_failure: bool =False, interactive: bool = True) -> None:
                             True,
                             None,
                         )  # @UndefinedVariable
-                else:
+                elif not config.connected:
                     success = connection.authentify()
                     if success:
                         config.connected = success
+                        connection.rememberSession(
+                            aw.plus_account,
+                            aw.plus_remember_credentials,
+                        )
                         aw.sendmessageSignal.emit(
                             f"{aw.plus_account} {QApplication.translate('Plus', 'authentified')}",
                             True,
@@ -262,6 +262,7 @@ def connect(clear_on_failure: bool =False, interactive: bool = True) -> None:
                             _log.exception(e)
                     elif clear_on_failure:
                         connection.clearCredentials()
+                        connection.clearRememberedSession(aw.plus_email)
                         aw.sendmessageSignal.emit(
                             QApplication.translate(
                                 'Plus', 'artisan.plus turned off'
@@ -270,6 +271,7 @@ def connect(clear_on_failure: bool =False, interactive: bool = True) -> None:
                             None,
                         )  # @UndefinedVariable
                     elif interactive:
+                        connection.clearRememberedSession(aw.plus_email)
                         message = QApplication.translate(
                             'Plus', 'Authentication failed'
                         )
@@ -284,6 +286,7 @@ def connect(clear_on_failure: bool =False, interactive: bool = True) -> None:
                 _log.debug(e)
             if clear_on_failure:
                 connection.clearCredentials()
+                connection.clearRememberedSession(aw.plus_email if aw is not None else None)
                 if interactive and aw is not None:
                     aw.sendmessageSignal.emit(
                         QApplication.translate(

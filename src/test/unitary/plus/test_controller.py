@@ -6,7 +6,7 @@
 import sys
 from collections.abc import Generator
 from typing import Any
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 # Store original modules before any mocking to enable restoration
 original_modules: dict[str, Any] = {}
@@ -123,8 +123,11 @@ class MockQTimer:
 
 class MockQApplication:
     def __init__(self) -> None:
-        self.keyboardModifiers = Mock(return_value=0)
         self.style = Mock(return_value=Mock())
+
+    @staticmethod
+    def keyboardModifiers() -> int:
+        return 0
 
     @staticmethod
     def translate(_context: str, text: str) -> str:
@@ -295,8 +298,8 @@ def mock_qsemaphore() -> Mock:
 def mock_app_window() -> Mock:
     """Create a mock application window."""
     mock_aw = Mock()
-    mock_aw.plus_account = 'test@example.com'
-    mock_aw.plus_email = 'test@example.com'
+    mock_aw.plus_account = 'test-user'
+    mock_aw.plus_email = 'test-user'
     mock_aw.plus_remember_credentials = True
     mock_aw.plus_user_id = 'user123'
     mock_aw.curFile = '/path/to/profile.alog'
@@ -319,7 +322,7 @@ def mock_app_window() -> Mock:
 @pytest.fixture
 def mock_login_response() -> tuple[str,str,bool,bool]:
     """Create a mock login response."""
-    return ('test@example.com', 'password123', True, True)
+    return ('test-user', 'password123', True, True)
 
 
 class TestConnectionState:
@@ -462,6 +465,101 @@ class TestStartFunction:
             mock_timer.singleShot.assert_called_once_with(2, controller.connect)
 
 
+class TestStartupLoginRequirement:
+    """Test startup login gate behavior."""
+
+    def test_require_startup_login_restores_session_before_prompting(self, mock_app_window:Mock) -> None:
+        """Test startup login first tries restoring a remembered session."""
+        mock_semaphore = Mock()
+        mock_semaphore.available.return_value = 0
+
+        with patch('plus.controller.config') as mock_config, patch(
+            'plus.controller.connection.restoreSession', return_value=True
+        ) as mock_restore, patch(
+            'plus.controller.connect'
+        ) as mock_connect, patch(
+            'plus.controller.connect_semaphore', mock_semaphore
+        ):
+            mock_config.connected = False
+
+            result = controller.require_startup_login(mock_app_window)
+
+            assert result is True
+            assert mock_config.app_window == mock_app_window
+            assert mock_config.connected is True
+            mock_restore.assert_called_once()
+            mock_connect.assert_not_called()
+            mock_semaphore.acquire.assert_called_once_with(1)
+            mock_semaphore.release.assert_called_once_with(1)
+
+    def test_require_startup_login_restores_session_sets_connected_inside_semaphore(self, mock_app_window:Mock) -> None:
+        """Test startup login only updates connected after restore succeeds."""
+        mock_semaphore = Mock()
+        mock_semaphore.available.return_value = 0
+
+        with patch('plus.controller.config') as mock_config, patch(
+            'plus.controller.connection.restoreSession', return_value=True
+        ), patch('plus.controller.connect') as mock_connect, patch(
+            'plus.controller.connect_semaphore', mock_semaphore
+        ):
+            mock_config.connected = False
+
+            result = controller.require_startup_login(mock_app_window)
+
+            assert result is True
+            assert mock_config.connected is True
+            mock_connect.assert_not_called()
+            mock_semaphore.acquire.assert_called_once_with(1)
+            mock_semaphore.release.assert_called_once_with(1)
+
+    def test_require_startup_login_does_not_touch_semaphore_when_restore_fails(self, mock_app_window:Mock) -> None:
+        """Test startup login leaves semaphore handling to connect() when restore fails."""
+        mock_semaphore = Mock()
+
+        with patch('plus.controller.config') as mock_config, patch(
+            'plus.controller.connection.restoreSession', return_value=False
+        ) as mock_restore, patch(
+            'plus.controller.connect'
+        ) as mock_connect, patch(
+            'plus.controller.connect_semaphore', mock_semaphore
+        ):
+            mock_config.connected = False
+
+            def connect_success(*_args:Any, **_kwargs:Any) -> None:
+                mock_config.connected = True
+
+            mock_connect.side_effect = connect_success
+
+            result = controller.require_startup_login(mock_app_window)
+
+            assert result is True
+            mock_restore.assert_called_once()
+            mock_connect.assert_called_once_with(interactive=True)
+            mock_semaphore.acquire.assert_not_called()
+            mock_semaphore.release.assert_not_called()
+
+    def test_require_startup_login_falls_back_to_interactive_connect(self, mock_app_window:Mock) -> None:
+        """Test startup login prompts only when restore did not establish a session."""
+        with patch('plus.controller.config') as mock_config, patch(
+            'plus.controller.connection.restoreSession', return_value=False
+        ) as mock_restore, patch(
+            'plus.controller.connect'
+        ) as mock_connect:
+            mock_config.connected = False
+
+            def connect_success(*_args:Any, **_kwargs:Any) -> None:
+                mock_config.connected = True
+
+            mock_connect.side_effect = connect_success
+
+            result = controller.require_startup_login(mock_app_window)
+
+            assert result is True
+            assert mock_config.app_window == mock_app_window
+            mock_restore.assert_called_once()
+            mock_connect.assert_called_once_with(interactive=True)
+
+
 class TestToggleFunction:
     """Test toggle function."""
 
@@ -595,7 +693,7 @@ class TestConnectFunction:
     ) -> None:
         """Test connect with successful authentication."""
         # Arrange
-        mock_app_window.plus_account = 'test@example.com'
+        mock_app_window.plus_account = 'test-user'
 
         with patch('plus.controller.is_connected', return_value=False), patch(
             'plus.controller.connect_semaphore', mock_qsemaphore
@@ -609,6 +707,7 @@ class TestConnectFunction:
 
             mock_config.app_window = mock_app_window
             mock_config.passwd = 'password123'
+            mock_config.connected = False
             mock_connection.authentify = Mock(return_value=True)
             mock_qsemaphore.available.return_value = 0  # Semaphore acquired
 
@@ -627,7 +726,7 @@ class TestConnectFunction:
     ) -> None:
         """Test connect with failed authentication."""
         # Arrange
-        mock_app_window.plus_account = 'test@example.com'
+        mock_app_window.plus_account = 'test-user'
 
         with patch('plus.controller.is_connected', return_value=False), patch(
             'plus.controller.connect_semaphore', mock_qsemaphore
@@ -639,6 +738,7 @@ class TestConnectFunction:
 
             mock_config.app_window = mock_app_window
             mock_config.passwd = 'password123'
+            mock_config.connected = False
             mock_connection.authentify = Mock(return_value=False)
             mock_qsemaphore.available.return_value = 0  # Semaphore acquired
 
@@ -647,6 +747,86 @@ class TestConnectFunction:
 
             # Assert
             mock_connection.authentify.assert_called_once()
+            mock_app_window.sendmessageSignal.emit.assert_called()
+
+    def test_connect_does_not_authenticate_blank_username_from_dialog(
+        self, mock_app_window: Mock, mock_qsemaphore: Mock
+    ) -> None:
+        """Test interactive login treats blank username as aborted login."""
+        mock_app_window.plus_account = None
+        mock_app_window.plus_email = 'test-user'
+
+        with patch('plus.controller.is_connected', return_value=False), patch(
+            'plus.controller.connect_semaphore', mock_qsemaphore
+        ), patch('plus.controller.config') as mock_config, patch(
+            'plus.controller.connection'
+        ) as mock_connection, patch(
+            'plus.login.plus_login', return_value=(None, 'password123', True, True)
+        ), patch('keyring.get_password', return_value=None):
+
+            mock_config.app_window = mock_app_window
+            mock_config.passwd = None
+            mock_config.connected = False
+            mock_config.app_name = 'artisan.plus'
+            mock_qsemaphore.available.return_value = 0
+
+            controller.connect(interactive=True)
+
+            assert mock_app_window.plus_account is None
+            mock_connection.authentify.assert_not_called()
+            mock_app_window.sendmessageSignal.emit.assert_called()
+
+    def test_connect_blank_username_login_result_keeps_email_none_when_not_remembered(
+        self, mock_app_window: Mock, mock_qsemaphore: Mock
+    ) -> None:
+        """Test blank username does not repopulate plus_email when remember is false."""
+        mock_app_window.plus_account = None
+        mock_app_window.plus_email = 'existing-user'
+
+        with patch('plus.controller.is_connected', return_value=False), patch(
+            'plus.controller.connect_semaphore', mock_qsemaphore
+        ), patch('plus.controller.config') as mock_config, patch(
+            'plus.controller.connection'
+        ) as mock_connection, patch(
+            'plus.login.plus_login', return_value=(None, 'password123', False, True)
+        ), patch('keyring.get_password', return_value=None):
+
+            mock_config.app_window = mock_app_window
+            mock_config.passwd = None
+            mock_config.connected = False
+            mock_config.app_name = 'artisan.plus'
+            mock_qsemaphore.available.return_value = 0
+
+            controller.connect(interactive=True)
+
+            assert mock_app_window.plus_account is None
+            assert mock_app_window.plus_email is None
+            mock_connection.authentify.assert_not_called()
+
+    def test_connect_saved_password_blank_username_does_not_set_account(
+        self, mock_app_window: Mock, mock_qsemaphore: Mock
+    ) -> None:
+        """Test saved-password login path does not persist an empty username."""
+        mock_app_window.plus_account = None
+
+        with patch('plus.controller.is_connected', return_value=False), patch(
+            'plus.controller.connect_semaphore', mock_qsemaphore
+        ), patch('plus.controller.config') as mock_config, patch(
+            'plus.controller.connection'
+        ) as mock_connection, patch(
+            'plus.login.plus_login', return_value=(None, 'saved_password', True, True)
+        ), patch('keyring.get_password', return_value=None):
+
+            mock_config.app_window = mock_app_window
+            mock_config.passwd = None
+            mock_config.connected = False
+            mock_config.app_name = 'artisan.plus'
+            mock_qsemaphore.available.return_value = 0
+
+            controller.connect(interactive=True)
+
+            assert mock_app_window.plus_account is None
+            mock_connection.authentify.assert_not_called()
             mock_app_window.sendmessageSignal.emit.assert_called()
 
     def test_connect_with_login_dialog(
@@ -662,10 +842,13 @@ class TestConnectFunction:
             'plus.controller.connection'
         ) as mock_connection, patch(
             'plus.login.plus_login', return_value=mock_login_response
-        ) as mock_login:
+        ) as mock_login, patch(
+            'keyring.get_password', return_value=None
+        ):
 
             mock_config.app_window = mock_app_window
             mock_config.passwd = None
+            mock_config.connected = False
             mock_connection.authentify = Mock(return_value=True)
             mock_qsemaphore.available.return_value = 0  # Semaphore acquired
 
@@ -674,7 +857,7 @@ class TestConnectFunction:
 
             # Assert
             mock_login.assert_called_once()
-            assert mock_app_window.plus_account == 'test@example.com'
+            assert mock_app_window.plus_account == 'test-user'
             assert mock_config.passwd == 'password123'
 
     def test_connect_login_dialog_cancelled(
@@ -702,68 +885,93 @@ class TestConnectFunction:
             mock_app_window.sendmessageSignal.emit.assert_called()
             # Should emit "Login aborted" message
 
-    def test_connect_clear_on_failure(self, mock_app_window: Mock, mock_qsemaphore: Mock) -> None:
-        """Test connect clears credentials on failure when clear_on_failure=True."""
-        # Arrange
-        mock_app_window.plus_account = 'test@example.com'
+    def test_connect_remember_false_deletes_existing_keyring_password(
+        self, mock_app_window: Mock, mock_qsemaphore: Mock
+    ) -> None:
+        """Test connect removes persisted password when user disables remember."""
+        mock_app_window.plus_account = None
+        login_response = ('test-user', 'password123', False, True)
 
         with patch('plus.controller.is_connected', return_value=False), patch(
             'plus.controller.connect_semaphore', mock_qsemaphore
         ), patch('plus.controller.config') as mock_config, patch(
             'plus.controller.connection'
         ) as mock_connection, patch(
-            'keyring.get_password', return_value='password123'
-        ):
-
+            'plus.controller.queue'
+        ) as mock_queue, patch(
+            'plus.login.plus_login', return_value=login_response
+        ), patch(
+            'keyring.get_password', return_value=None
+        ), patch(
+            'keyring.delete_password'
+        ) as mock_delete_password:
             mock_config.app_window = mock_app_window
-            mock_config.passwd = 'password123'
-            mock_connection.authentify = Mock(return_value=False)
-            mock_qsemaphore.available.return_value = 0  # Semaphore acquired
+            mock_config.connected = False
+            mock_config.passwd = None
+            mock_config.app_name = 'artisan.plus'
+            mock_connection.authentify = Mock(return_value=True)
+            mock_qsemaphore.available.return_value = 0
 
-            # Act
-            controller.connect(clear_on_failure=True, interactive=True)
+            controller.connect(interactive=True)
 
-            # Assert
-            mock_connection.clearCredentials.assert_called_once()
-            mock_app_window.sendmessageSignal.emit.assert_called()
+            assert mock_delete_password.call_args_list == [
+                call('artisan.plus', 'test-user'),
+            ]
+            mock_queue.start.assert_called_once_with()
+            assert mock_config.connected is True
 
-    def test_connect_exception_handling(self, mock_app_window: Mock, mock_qsemaphore: Mock) -> None:
-        """Test connect handles exceptions gracefully."""
-        # Arrange
+    def test_connect_remember_false_deletes_previous_keyring_password_when_login_changes(
+        self, mock_app_window: Mock, mock_qsemaphore: Mock
+    ) -> None:
+        """Test connect removes remembered credentials for both old and new login when opting out."""
+        mock_app_window.plus_account = None
+        mock_app_window.plus_email = 'remembered@example.com'
+        login_response = ('new@example.com', 'password123', False, True)
+
         with patch('plus.controller.is_connected', return_value=False), patch(
             'plus.controller.connect_semaphore', mock_qsemaphore
         ), patch('plus.controller.config') as mock_config, patch(
-            'keyring.get_password', side_effect=Exception('Keyring error')
-        ):
-
+            'plus.controller.connection'
+        ) as mock_connection, patch(
+            'plus.controller.queue'
+        ) as mock_queue, patch(
+            'plus.login.plus_login', return_value=login_response
+        ), patch(
+            'keyring.get_password', return_value='stored-password'
+        ), patch(
+            'keyring.delete_password'
+        ) as mock_delete_password:
             mock_config.app_window = mock_app_window
-            mock_qsemaphore.available.return_value = 0  # Semaphore acquired
+            mock_config.connected = False
+            mock_config.passwd = None
+            mock_config.app_name = 'artisan.plus'
+            mock_connection.authentify = Mock(return_value=True)
+            mock_qsemaphore.available.return_value = 0
 
-            # Act & Assert - Should not raise exception
             controller.connect(interactive=True)
 
-            # Should still release semaphore despite exception
+            assert mock_delete_password.call_args_list == [
+                call('artisan.plus', 'remembered@example.com'),
+                call('artisan.plus', 'new@example.com'),
+            ]
+            assert mock_app_window.plus_account == 'new@example.com'
+            assert mock_app_window.plus_email is None
+            assert mock_app_window.plus_remember_credentials is False
+            assert mock_config.passwd == 'password123'
+            assert mock_config.connected is True
+            mock_connection.authentify.assert_called_once_with()
+            mock_connection.rememberSession.assert_called_once_with(
+                'new@example.com', False
+            )
+            mock_queue.start.assert_called_once_with()
+            mock_app_window.resetDonateCounter.assert_called_once_with()
+            mock_app_window.updatePlusStatusSignal.emit.assert_called_once_with()
+            mock_qsemaphore.acquire.assert_called_once_with(1)
             mock_qsemaphore.release.assert_called_once_with(1)
-
-#    def test_connect_non_interactive_mode(
-#        self, mock_app_window: Mock, mock_qsemaphore: Mock
-#    ) -> None:
-#        """Test connect in non-interactive mode."""
-#        # Arrange
-#        mock_app_window.plus_account = None
-#
-#        with patch("plus.controller.is_connected", return_value=False), patch(
-#            "plus.controller.connect_semaphore", mock_qsemaphore
-#        ), patch("plus.controller.config") as mock_config, patch(
-#            "plus.login.plus_login"
-#        ) as mock_login:
-#
-#            mock_config.app_window = mock_app_window
-#            mock_config.passwd = None
-#            mock_qsemaphore.available.return_value = 0  # Semaphore acquired
-#
-#            # Act
-#            controller.connect(interactive=False)
-#
-#            # Assert
-#            mock_login.assert_not_called()  # Should not show login dialog
+            mock_connection.restoreSession.assert_not_called()
+            mock_connection.clearCredentials.assert_not_called()
+            mock_connection.clearRememberedSession.assert_not_called()
+            assert mock_app_window.sendmessageSignal.emit.call_args_list[:2] == [
+                call('new@example.com authentified', True, None),
+                call('Connected to artisan.plus', True, None),
+            ]
