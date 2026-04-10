@@ -398,7 +398,7 @@ def restoreSession() -> bool:
     setRefreshToken(refresh_token)
     return refreshSession()
 
-
+# Trigger coderabbbit ai review
 def persistRefreshToken(account: str, refresh_token: str|None, remember: bool) -> None:
     try:
         import keyring
