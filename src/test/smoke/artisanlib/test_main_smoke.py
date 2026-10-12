@@ -52,6 +52,7 @@ cross-file contamination.
 """
 
 from collections.abc import Generator
+from contextlib import ExitStack
 from typing import override, Any
 from unittest.mock import Mock, patch
 
@@ -391,15 +392,21 @@ class TestStartupLoginGate:
         if not IMPORT_SUCCESS:
             pytest.skip('startup smoke coverage requires importing artisanlib.main successfully')
 
-    def test_ensure_startup_login_returns_controller_result(self) -> None:
-        """Test startup gate delegates to plus.controller.require_startup_login."""
+    def test_ensure_startup_login_returns_erp_gate_result(self) -> None:
+        """Test startup gate delegates to erp.gate.require_login."""
         self._require_real_main_import()
         mock_window = Mock()
-        with patch.object(main_module.plus.controller, 'require_startup_login', return_value=True) as mock_require:
+        with patch.object(main_module.erp.gate, 'require_login', return_value=True) as mock_require:
             result = main_module.ensure_startup_login(mock_window)
 
             assert result is True
             mock_require.assert_called_once_with(mock_window)
+
+    def test_ensure_startup_login_refuses_entry_if_the_gate_crashes(self) -> None:
+        """Test an unexpected error in the ERP login never lets the user in."""
+        self._require_real_main_import()
+        with patch.object(main_module.erp.gate, 'require_login', side_effect=RuntimeError('boom')):
+            assert main_module.ensure_startup_login(Mock()) is False
 
     def test_failed_startup_login_exits_with_failure_status(self) -> None:
         """Test failed startup login exits with a non-zero status code."""
@@ -414,7 +421,7 @@ class TestStartupLoginGate:
             main_module, 'debugLogLevelActive', return_value=False
         ), patch.object(
             main_module.app, 'setActivationWindow'
-        ), patch.object(
+        ) as mock_set_activation_window, patch.object(
             main_module.QApplication, 'setLayoutDirection'
         ), patch.object(
             main_module, 'QSettings'
@@ -441,6 +448,8 @@ class TestStartupLoginGate:
             assert exc_info.value.code == 1
             mock_exit.assert_called_once_with(1)
             mock_window.show.assert_not_called()
+            # nothing may be opened into the hidden main window before the login succeeded
+            mock_set_activation_window.assert_not_called()
 
     def test_secondary_instance_handoff_skips_startup_login(self) -> None:
         """Test secondary-instance file handoff exits before startup login."""
@@ -490,44 +499,76 @@ class TestStartupLoginGate:
             mock_startup_login.assert_not_called()
             mock_window.show.assert_not_called()
 
-    def test_artisanviewer_mode_skips_startup_login(self) -> None:
-        """Test Artisan Viewer mode does not require startup login."""
-        self._require_real_main_import()
-        with patch.object(main_module, 'ensure_startup_login') as mock_startup_login, patch.object(
-            main_module, 'ApplicationWindow'
-        ) as mock_window_class, patch.object(
-            main_module, 'initialize_locale', return_value='en'
-        ), patch.object(
-            main_module, 'getDocumentsDirectory', return_value=None
-        ), patch.object(
-            main_module, 'debugLogLevelActive', return_value=False
-        ), patch.object(
-            main_module.app, 'setActivationWindow'
-        ), patch.object(
-            main_module.QApplication, 'setLayoutDirection'
-        ), patch.object(
-            main_module, 'QSettings'
-        ) as mock_qsettings, patch.object(
-            main_module.libtime, 'process_time', side_effect=[0.0, 0.1]
-        ), patch.object(
-            main_module._log, 'info'
-        ), patch.object(
-            main_module.sys, 'argv', ['artisan']
-        ):
+    @staticmethod
+    def _run_main(gate_result:bool, viewer:bool) -> tuple[Mock, Mock, Mock, list[str]]:
+        """Runs main() with a mocked ERP gate. Returns (gate, main window, exit, order of activation/show calls)."""
+        order:list[str] = []
+        with ExitStack() as stack:
+            mock_gate = stack.enter_context(patch.object(main_module, 'ensure_startup_login', return_value=gate_result))
+            mock_window_class = stack.enter_context(patch.object(main_module, 'ApplicationWindow'))
+            stack.enter_context(patch.object(main_module, 'initialize_locale', return_value='en'))
+            stack.enter_context(patch.object(main_module, 'getDocumentsDirectory', return_value=None))
+            stack.enter_context(patch.object(main_module, 'debugLogLevelActive', return_value=False))
+            stack.enter_context(patch.object(
+                main_module.app, 'setActivationWindow', side_effect=lambda *_a, **_k: order.append('activation_window')))
+            stack.enter_context(patch.object(main_module.QApplication, 'setLayoutDirection'))
+            mock_qsettings = stack.enter_context(patch.object(main_module, 'QSettings'))
+            stack.enter_context(patch.object(main_module.libtime, 'process_time', side_effect=[0.0, 0.1]))
+            stack.enter_context(patch.object(main_module._log, 'info'))
+            stack.enter_context(patch.object(main_module.sys, 'argv', ['artisan']))
+            mock_exit = stack.enter_context(patch.object(main_module.sys, 'exit', side_effect=SystemExit(1)))
             mock_window = Mock()
             mock_window.defaultSettings = {}
             mock_window.ui_mode = 'standard'
             mock_window.qmc = Mock()
+            mock_window.show.side_effect = lambda *_a, **_k: order.append('show')
             mock_window_class.return_value = mock_window
             mock_qsettings.return_value.allKeys.return_value = []
-            main_module.app.artisanviewerMode = True
+            main_module.app.artisanviewerMode = viewer
+            try:
+                if gate_result:
+                    main_module.main()
+                else:
+                    with pytest.raises(SystemExit):
+                        main_module.main()
+            finally:
+                main_module.app.artisanviewerMode = False
+        return mock_gate, mock_window, mock_exit, order
 
-            main_module.main()
+    def test_artisanviewer_mode_requires_startup_login(self) -> None:
+        """Test Artisan Viewer mode is not exempt from the mandatory ERP login."""
+        self._require_real_main_import()
+        mock_gate, mock_window, mock_exit, order = self._run_main(gate_result=False, viewer=True)
 
-            mock_startup_login.assert_not_called()
-            mock_window.show.assert_called_once()
-            main_module.app.artisanviewerMode = False
-            mock_window.show.reset_mock()
+        mock_gate.assert_called_once()
+        mock_exit.assert_called_once_with(1)
+        mock_window.show.assert_not_called()
+        assert order == []
+
+    def test_successful_startup_login_activates_the_window_and_then_shows_it(self) -> None:
+        """Test the activation window is only set after the login, right before the main window is shown."""
+        self._require_real_main_import()
+        mock_gate, mock_window, _mock_exit, order = self._run_main(gate_result=True, viewer=False)
+
+        mock_gate.assert_called_once()
+        mock_window.show.assert_called_once()
+        assert order == ['activation_window', 'show']
+
+
+    def test_file_open_before_login_is_kept_and_not_opened(self) -> None:
+        """Test a FileOpen event during the pending login is not opened but remembered, and handed over exactly once."""
+        self._require_real_main_import()
+        event = Mock()
+        event.type.return_value = main_module.QEvent.Type.FileOpen
+        url = Mock()
+        event.url.return_value = url
+        with patch.object(main_module.app, 'activationWindow', return_value=None), patch.object(
+            main_module.app, 'open_url'
+        ) as mock_open_url:
+            assert main_module.app.event(event) is True
+            mock_open_url.assert_not_called()
+        assert main_module.app.take_pending_open_urls() == [url]
+        assert main_module.app.take_pending_open_urls() == []
 
 
 class TestArtisan:
