@@ -198,10 +198,34 @@ def _install_banner(aw:'ApplicationWindow') -> None:
         _log.exception(e)
 
 
+def window_title_suffix() -> str:
+    """Text appended to Artisan's window title: which roaster this session holds. Always visible, even if the banner is overlooked."""
+    manager = _state.manager
+    if manager is None:
+        return ''
+    name = manager.roaster_name
+    if manager.state is LeaseState.LOST:
+        return QApplication.translate('ERP', ' · KHÔNG CÒN GIỮ MÁY {0}').format(name)
+    if manager.state is LeaseState.SUSPECT:
+        return QApplication.translate('ERP', ' · Máy rang: {0} (mất kết nối ERP)').format(name)
+    return QApplication.translate('ERP', ' · Máy rang: {0}').format(name)
+
+
+def _refresh_title() -> None:
+    aw = _state.aw
+    if aw is None:
+        return
+    try:
+        aw.updateWindowTitle()
+    except Exception as e: # pylint: disable=broad-except
+        _log.exception(e)
+
+
 def _on_lease_state(state:LeaseState, reason:str) -> None:
     manager = _state.manager
     if _state.banner is not None and manager is not None:
         _state.banner.apply(state, manager.roaster_name, reason)
+    _refresh_title()
 
 
 def _adopt(roaster:Roaster, claim:Claim) -> None:
@@ -209,7 +233,8 @@ def _adopt(roaster:Roaster, claim:Claim) -> None:
     previous = _state.manager
     if previous is not None:
         previous.stop(release=previous.is_ok)
-    manager = LeaseManager(roaster.id, roaster.name or roaster.code, claim, session_id=device.session_id())
+    display = f'{roaster.name} ({roaster.code})' if roaster.name and roaster.code else (roaster.name or roaster.code)
+    manager = LeaseManager(roaster.id, display, claim, session_id=device.session_id())
     bridge = _state.bridge
     if bridge is not None:
         manager.add_listener(bridge.state_changed.emit)
@@ -217,6 +242,7 @@ def _adopt(roaster:Roaster, claim:Claim) -> None:
     manager.start()
     if _state.banner is not None:
         _state.banner.apply(LeaseState.HELD, manager.roaster_name, '')
+    _refresh_title()
 
 
 def _pick(aw:'ApplicationWindow') -> str:

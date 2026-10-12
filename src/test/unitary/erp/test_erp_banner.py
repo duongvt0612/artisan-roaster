@@ -97,3 +97,29 @@ def test_switching_state_restyles_the_text_too_not_only_the_background(bar:banne
     assert held_colour != lost_colour
     bar.apply(LeaseState.HELD, 'Máy', 'recovered')
     assert bar.label.palette().color(QPalette.ColorRole.WindowText).name() == held_colour
+
+
+def _pixel(widget:QWidget, x:int, y:int) -> str:
+    return widget.grab().toImage().pixelColor(x, y).name()
+
+
+@pytest.mark.parametrize('state', [LeaseState.HELD, LeaseState.SUSPECT, LeaseState.LOST])
+def test_text_stays_readable_inside_artisans_wildcard_stylesheet(qapp:QApplication, state:LeaseState) -> None:  # noqa: ARG001
+    """Regression: Artisan paints its main widget with `* {background-color: <canvas>; color: ...}`. The banner label then got a white
+    background and, with white text, was invisible until selected with the mouse. The label must keep the banner's own background."""
+    host = QWidget()
+    host.setStyleSheet('* {background-color: #ffffff; color: #000000; border-width: 0px;}')  # what ApplicationWindow does
+    host.resize(760, 140)
+    layout = QVBoxLayout(host)
+    layout.setContentsMargins(0, 0, 0, 0)
+    bar = banner.LeaseBanner(host)
+    layout.addWidget(bar)
+    layout.addStretch()
+    bar.apply(state, 'Máy Rang Nhỏ (ROAST-01)', 'lease_lost')
+    host.show()
+    qapp.processEvents()
+    frame_bg = _pixel(bar, 2, 2)                                   # the banner's own colour, at its corner
+    label_bg = _pixel(bar, bar.label.x() + 1, bar.label.y() + 1)   # top-left corner of the label: no glyph is ever drawn there
+    assert frame_bg != '#ffffff'
+    assert label_bg == frame_bg, f'label background {label_bg} differs from the banner colour {frame_bg}'
+    host.close()

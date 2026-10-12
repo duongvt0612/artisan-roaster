@@ -280,3 +280,46 @@ class TestReleaseRoaster:
         with patch.object(gate, 'confirm_logout', return_value=True):
             assert gate.logout(aw) is True
         assert order == ['release', 'logout']
+
+
+class TestWindowTitle:
+    """The roaster this session holds is always visible in the window title, even if the banner is missed."""
+
+    def test_no_roaster_no_suffix(self, roaster_env:SimpleNamespace) -> None:  # noqa: ARG002
+        assert gate.window_title_suffix() == ''
+
+    def test_held_names_the_roaster(self, aw:MagicMock, roaster_env:SimpleNamespace) -> None:
+        FakeDialog.script = [{'accept': True, 'claim': _claim(), 'roaster': _roaster()}]
+        gate.require_roaster(aw)
+        manager = roaster_env.manager_cls.return_value
+        manager.state = LeaseState.HELD
+        manager.roaster_name = 'Máy Rang Nhỏ (ROAST-01)'
+        assert gate.window_title_suffix() == ' · Máy rang: Máy Rang Nhỏ (ROAST-01)'
+
+    def test_suspect_and_lost_are_called_out(self, aw:MagicMock, roaster_env:SimpleNamespace) -> None:
+        FakeDialog.script = [{'accept': True, 'claim': _claim(), 'roaster': _roaster()}]
+        gate.require_roaster(aw)
+        manager = roaster_env.manager_cls.return_value
+        manager.roaster_name = 'Máy Rang Nhỏ (ROAST-01)'
+        manager.state = LeaseState.SUSPECT
+        assert 'mất kết nối' in gate.window_title_suffix()
+        manager.state = LeaseState.LOST
+        assert 'KHÔNG CÒN GIỮ' in gate.window_title_suffix()
+
+    def test_the_title_is_refreshed_when_a_roaster_is_adopted_and_when_the_state_changes(self, aw:MagicMock, roaster_env:SimpleNamespace) -> None:  # noqa: ARG002
+        FakeDialog.script = [{'accept': True, 'claim': _claim(), 'roaster': _roaster()}]
+        gate.require_roaster(aw)
+        aw.updateWindowTitle.assert_called()
+        aw.updateWindowTitle.reset_mock()
+        gate._on_lease_state(LeaseState.LOST, 'lease_lost')  # pylint: disable=protected-access
+        aw.updateWindowTitle.assert_called_once()
+
+    def test_a_failing_title_refresh_never_breaks_the_flow(self, aw:MagicMock, roaster_env:SimpleNamespace) -> None:  # noqa: ARG002
+        aw.updateWindowTitle.side_effect = RuntimeError('boom')
+        FakeDialog.script = [{'accept': True, 'claim': _claim(), 'roaster': _roaster()}]
+        assert gate.require_roaster(aw) is True
+
+    def test_the_name_includes_the_code_when_both_exist(self, aw:MagicMock, roaster_env:SimpleNamespace) -> None:
+        FakeDialog.script = [{'accept': True, 'claim': _claim(), 'roaster': _roaster()}]
+        gate.require_roaster(aw)
+        assert roaster_env.manager_cls.call_args.args[1] == 'Máy Rang Nhỏ (ROAST-01)'

@@ -45,15 +45,17 @@ def lost_text(name:str, reason:str) -> str:
 
 def _stylesheet(palette:QPalette) -> str:
     dark = palette.color(QPalette.ColorRole.Window).lightness() < 128
-    held_bg, held_fg = ('#1d2b3a', '#b8d4f0') if dark else ('#e8f1fb', '#0f3f73')
+    held_bg, held_fg = ('#1d4f85', '#ffffff') if dark else ('#2b6cb0', '#ffffff') # strong on purpose: the operator must always see which roaster he holds
     warn_bg, warn_fg = ('#4a3510', '#ffd37a') if dark else ('#fdf0d5', '#7a4a00')
     lost_bg, lost_fg = ('#4d1f1f', '#ffc9c2') if dark else ('#fdecea', '#8a1c1c')
     return f"""
         QFrame#{_OBJECT_NAME} {{ border: none; }}
+        /* Artisan paints its main widget with `* {{ background-color: <canvas> }}`: say explicitly that the text sits on the banner colour */
+        QFrame#{_OBJECT_NAME} QLabel {{ background: transparent; border: none; }}
         QFrame#{_OBJECT_NAME}[kind="held"] {{ background: {held_bg}; }}
         QFrame#{_OBJECT_NAME}[kind="suspect"] {{ background: {warn_bg}; }}
         QFrame#{_OBJECT_NAME}[kind="lost"] {{ background: {lost_bg}; }}
-        QFrame#{_OBJECT_NAME}[kind="held"] QLabel {{ color: {held_fg}; }}
+        QFrame#{_OBJECT_NAME}[kind="held"] QLabel {{ color: {held_fg}; font-weight: 700; font-size: 14px; }}
         QFrame#{_OBJECT_NAME}[kind="suspect"] QLabel {{ color: {warn_fg}; font-weight: 600; }}
         QFrame#{_OBJECT_NAME}[kind="lost"] QLabel {{ color: {lost_fg}; font-weight: 600; }}
         QFrame#{_OBJECT_NAME} QPushButton {{
@@ -73,13 +75,12 @@ class LeaseBanner(QFrame):
         self.kind:str = 'held'
         self.label:QLabel = QLabel('')
         self.label.setWordWrap(True)
-        self.label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.label.setAccessibleName(QApplication.translate('ERP', 'Trạng thái máy rang'))
         self.reselect_button:QPushButton = QPushButton(QApplication.translate('ERP', 'Chọn lại máy'))
         self.reselect_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.reselect_button.clicked.connect(self.reselect.emit)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 4, 12, 4)
+        layout.setContentsMargins(14, 6, 14, 6)
         layout.addWidget(self.label, 1)
         layout.addWidget(self.reselect_button)
         self.setStyleSheet(_stylesheet(self.palette()))
@@ -103,7 +104,7 @@ class LeaseBanner(QFrame):
             return
         if state is LeaseState.HELD:
             self._set_kind('held')
-            self.label.setText(QApplication.translate('ERP', 'Máy rang: {0}').format(name))
+            self.label.setText(QApplication.translate('ERP', 'Máy rang đang dùng: {0}').format(name))
             self.reselect_button.setVisible(False)
         elif state is LeaseState.SUSPECT:
             self._set_kind('suspect')

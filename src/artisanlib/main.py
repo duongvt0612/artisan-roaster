@@ -4638,6 +4638,10 @@ class ApplicationWindow(QMainWindow):
             else:
                 self.setWindowTitle(f'{dirtySign}{appTitle}')
                 self.setWindowFilePath('')
+            # which roaster of the ERP this session holds
+            erp_suffix = erp.gate.window_title_suffix()
+            if erp_suffix:
+                self.setWindowTitle(self.windowTitle() + erp_suffix)
         except Exception as e: # pylint: disable=broad-except
             _log.exception(e)
 
