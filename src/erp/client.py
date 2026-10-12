@@ -97,6 +97,15 @@ def _check(r:requests.Response, rejected:ErrorKind) -> dict[str, Any]:
     return data
 
 
+def request(method:str, url:str, token:str, json:Any = None, params:dict[str, Any]|None = None) -> requests.Response:
+    """Authenticated request (Bearer). Network problems become ErpAuthError('network'); the status code is the caller's business."""
+    try:
+        return requests.request(method, url, json=json, params=params, headers={'Authorization': f'Bearer {token}'}, timeout=config.timeout)
+    except requests.exceptions.RequestException as e:
+        _log.info('ERP request failed: %s', type(e).__name__)
+        raise ErpAuthError('network', str(e)) from e
+
+
 def login(username:str, password:str) -> AuthResult:
     _log.debug('ERP login()')
     data = _check(_post(config.get_login_url(), {'username': username, 'password': password}), 'invalid_credentials')

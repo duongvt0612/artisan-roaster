@@ -35,6 +35,11 @@ min_username_len: Final[int] = 3
 max_username_len: Final[int] = 30
 min_passwd_len: Final[int] = 6
 
+# how often the roaster list is refreshed while the selection dialog is open (the realtime push only makes it faster)
+roaster_poll_seconds: Final[int] = 15
+# a lease that could not be renewed for this share of its TTL is shown as "suspect" (the ERP may hand the roaster to someone else soon)
+lease_suspect_fraction: Final[float] = 0.8
+
 default_api_base_url: Final[str] = 'https://erp-api.codecoffee.vn/api'
 
 
@@ -52,3 +57,13 @@ def get_refresh_url() -> str:
 
 def get_logout_url() -> str:
     return get_api_base_url() + '/auth/logout'
+
+
+def get_roasters_url() -> str:
+    return get_api_base_url() + '/roasters'
+
+
+def get_socket_url() -> str:
+    """Origin of the Socket.IO gateway: the API URL without its /api prefix (as the ERP mobile app derives it)."""
+    base = get_api_base_url()
+    return base[:-4] if base.endswith('/api') else base

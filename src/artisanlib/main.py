@@ -21514,6 +21514,7 @@ class ApplicationWindow(QMainWindow):
                 if QApplication.queryKeyboardModifiers() != (Qt.KeyboardModifier.AltModifier | Qt.KeyboardModifier.ShiftModifier):
                     self.closeEventSettings() # it takes quite some time to write the >1000 setting items
 #                gc.collect() # this takes quite some time
+                erp.gate.release_roaster() # give the roaster back to the ERP (best effort, bounded wait)
                 QApplication.exit()
                 return True
             self.quitAction.setEnabled(True)
@@ -28091,6 +28092,16 @@ def ensure_startup_login(app_window:'ApplicationWindow') -> bool:
         return False
 
 
+def ensure_roaster(app_window:'ApplicationWindow') -> bool:
+    # after the ERP login the user MUST choose a roaster, which he then holds exclusively until Artisan ends
+    try:
+        return erp.gate.require_roaster(app_window)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception('Roaster selection failed: %s', e)
+        return False
+
+
 def main() -> None:
 
 
@@ -28170,6 +28181,10 @@ def main() -> None:
 
         # mandatory ERP login, for the main application as well as for the Viewer
         if not ensure_startup_login(appWindow):
+            sys.exit(1)
+
+        # mandatory roaster selection (the Viewer only looks at files, it does not roast)
+        if not app.artisanviewerMode and not ensure_roaster(appWindow):
             sys.exit(1)
 
         app.setActivationWindow(appWindow,activateOnMessage=False) # set the activation window for the QtSingleApplication

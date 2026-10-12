@@ -1,0 +1,99 @@
+"""Unit tests for erp.banner: the strip at the top of the main window that shows which roaster this session holds."""
+
+import os
+from collections.abc import Generator
+
+import pytest
+
+os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+
+from PyQt6.QtGui import QPalette  # noqa: E402
+from PyQt6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget  # noqa: E402
+
+from erp import banner  # noqa: E402
+from erp.lease import LeaseState  # noqa: E402
+
+
+@pytest.fixture(scope='module')
+def qapp() -> Generator[QApplication, None, None]:
+    yield QApplication.instance() or QApplication([])  # type:ignore[misc]
+
+
+@pytest.fixture
+def bar(qapp:QApplication) -> Generator[banner.LeaseBanner, None, None]:  # noqa: ARG001
+    parent = QWidget()
+    b = banner.LeaseBanner(parent)
+    parent.show()
+    yield b
+    parent.close()
+
+
+def test_held_shows_which_roaster_without_alarm(bar:banner.LeaseBanner) -> None:
+    bar.apply(LeaseState.HELD, 'Máy Rang Nhỏ', '')
+    assert bar.isVisible()
+    assert 'Máy Rang Nhỏ' in bar.label.text()
+    assert bar.kind == 'held'
+    assert bar.reselect_button.isHidden()
+
+
+def test_suspect_warns_about_the_connection(bar:banner.LeaseBanner) -> None:
+    bar.apply(LeaseState.SUSPECT, 'Máy Rang Nhỏ', 'no_connection')
+    assert bar.isVisible() and bar.kind == 'suspect'
+    assert 'ERP' in bar.label.text() and 'Máy Rang Nhỏ' in bar.label.text()
+    assert bar.reselect_button.isHidden()
+
+
+@pytest.mark.parametrize(('reason', 'fragment'), [
+    ('lease_lost', 'phiên khác'),
+    ('force_released', 'ép nhả'),
+    ('session_expired', 'đăng nhập'),
+    ('not_found', 'không còn'),
+    ('forbidden', 'quyền'),
+    ('something_new', 'Máy Rang Nhỏ'),   # unknown reasons still produce a readable message
+])
+def test_lost_says_why_and_offers_to_pick_again(bar:banner.LeaseBanner, reason:str, fragment:str) -> None:
+    bar.apply(LeaseState.LOST, 'Máy Rang Nhỏ', reason)
+    assert bar.isVisible() and bar.kind == 'lost'
+    assert fragment in bar.label.text()
+    assert not bar.reselect_button.isHidden()
+    assert 'dữ liệu' in bar.label.text().lower()  # reassure: what is being recorded is not thrown away
+
+
+def test_reselect_button_emits_the_signal(bar:banner.LeaseBanner) -> None:
+    got:list[bool] = []
+    bar.reselect.connect(lambda: got.append(True))
+    bar.apply(LeaseState.LOST, 'Máy', 'lease_lost')
+    bar.reselect_button.click()
+    assert got == [True]
+
+
+def test_idle_hides_the_banner(bar:banner.LeaseBanner) -> None:
+    bar.apply(LeaseState.HELD, 'Máy', '')
+    bar.apply(LeaseState.IDLE, 'Máy', '')
+    assert not bar.isVisible()
+
+
+def test_recovering_goes_back_to_the_quiet_held_look(bar:banner.LeaseBanner) -> None:
+    bar.apply(LeaseState.SUSPECT, 'Máy', 'no_connection')
+    bar.apply(LeaseState.HELD, 'Máy', 'recovered')
+    assert bar.kind == 'held' and 'Máy' in bar.label.text()
+
+
+def test_install_puts_the_banner_on_top_of_the_layout(qapp:QApplication) -> None:  # noqa: ARG001
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    layout.addWidget(QLabel('graph'))
+    b = banner.install(host)
+    assert layout.itemAt(0).widget() is b
+    assert banner.install(host) is b   # installing twice does not stack banners
+
+
+def test_switching_state_restyles_the_text_too_not_only_the_background(bar:banner.LeaseBanner) -> None:
+    """Regression: after HELD -> LOST the frame turned red but the text kept the 'held' colour (children were not restyled)."""
+    bar.apply(LeaseState.HELD, 'Máy', '')
+    held_colour = bar.label.palette().color(QPalette.ColorRole.WindowText).name()
+    bar.apply(LeaseState.LOST, 'Máy', 'lease_lost')
+    lost_colour = bar.label.palette().color(QPalette.ColorRole.WindowText).name()
+    assert held_colour != lost_colour
+    bar.apply(LeaseState.HELD, 'Máy', 'recovered')
+    assert bar.label.palette().color(QPalette.ColorRole.WindowText).name() == held_colour

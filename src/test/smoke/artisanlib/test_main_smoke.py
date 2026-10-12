@@ -500,11 +500,14 @@ class TestStartupLoginGate:
             mock_window.show.assert_not_called()
 
     @staticmethod
-    def _run_main(gate_result:bool, viewer:bool) -> tuple[Mock, Mock, Mock, list[str]]:
-        """Runs main() with a mocked ERP gate. Returns (gate, main window, exit, order of activation/show calls)."""
+    def _run_main(gate_result:bool, viewer:bool, roaster_result:bool = True) -> tuple[Mock, Mock, Mock, list[str], Mock]:
+        """Runs main() with mocked ERP gates. Returns (login gate, main window, exit, order of the steps, roaster gate)."""
         order:list[str] = []
         with ExitStack() as stack:
-            mock_gate = stack.enter_context(patch.object(main_module, 'ensure_startup_login', return_value=gate_result))
+            mock_gate = stack.enter_context(patch.object(
+                main_module, 'ensure_startup_login', side_effect=lambda *_a, **_k: order.append('login') or gate_result))
+            mock_roaster = stack.enter_context(patch.object(
+                main_module, 'ensure_roaster', side_effect=lambda *_a, **_k: order.append('roaster') or roaster_result))
             mock_window_class = stack.enter_context(patch.object(main_module, 'ApplicationWindow'))
             stack.enter_context(patch.object(main_module, 'initialize_locale', return_value='en'))
             stack.enter_context(patch.object(main_module, 'getDocumentsDirectory', return_value=None))
@@ -526,33 +529,64 @@ class TestStartupLoginGate:
             mock_qsettings.return_value.allKeys.return_value = []
             main_module.app.artisanviewerMode = viewer
             try:
-                if gate_result:
+                if gate_result and roaster_result:
                     main_module.main()
                 else:
                     with pytest.raises(SystemExit):
                         main_module.main()
             finally:
                 main_module.app.artisanviewerMode = False
-        return mock_gate, mock_window, mock_exit, order
+        return mock_gate, mock_window, mock_exit, order, mock_roaster
 
     def test_artisanviewer_mode_requires_startup_login(self) -> None:
         """Test Artisan Viewer mode is not exempt from the mandatory ERP login."""
         self._require_real_main_import()
-        mock_gate, mock_window, mock_exit, order = self._run_main(gate_result=False, viewer=True)
+        mock_gate, mock_window, mock_exit, order, mock_roaster = self._run_main(gate_result=False, viewer=True)
 
         mock_gate.assert_called_once()
+        mock_roaster.assert_not_called()  # no login, no roaster selection
         mock_exit.assert_called_once_with(1)
         mock_window.show.assert_not_called()
-        assert order == []
+        assert order == ['login']
 
     def test_successful_startup_login_activates_the_window_and_then_shows_it(self) -> None:
         """Test the activation window is only set after the login, right before the main window is shown."""
         self._require_real_main_import()
-        mock_gate, mock_window, _mock_exit, order = self._run_main(gate_result=True, viewer=False)
+        mock_gate, mock_window, _mock_exit, order, mock_roaster = self._run_main(gate_result=True, viewer=False)
 
         mock_gate.assert_called_once()
+        mock_roaster.assert_called_once()
         mock_window.show.assert_called_once()
-        assert order == ['activation_window', 'show']
+        assert order == ['login', 'roaster', 'activation_window', 'show']  # login, then the roaster, only then the window
+
+    def test_no_roaster_chosen_keeps_the_user_out_of_the_main_window(self) -> None:
+        """Test closing the roaster selection ends Artisan: no roaster, no main window."""
+        self._require_real_main_import()
+        _mock_gate, mock_window, mock_exit, order, mock_roaster = self._run_main(gate_result=True, viewer=False, roaster_result=False)
+
+        mock_roaster.assert_called_once()
+        mock_exit.assert_called_once_with(1)
+        mock_window.show.assert_not_called()
+        assert order == ['login', 'roaster']  # the activation window is not even set
+
+    def test_artisanviewer_mode_does_not_choose_a_roaster(self) -> None:
+        """Test the Viewer logs in to the ERP but never claims a roaster (it only looks at files)."""
+        self._require_real_main_import()
+        _mock_gate, mock_window, _mock_exit, order, mock_roaster = self._run_main(gate_result=True, viewer=True)
+
+        mock_roaster.assert_not_called()
+        mock_window.show.assert_called_once()
+        assert order == ['login', 'activation_window', 'show']
+
+    def test_ensure_roaster_delegates_to_the_erp_gate_and_never_lets_errors_through(self) -> None:
+        """Test the roaster gate refuses entry if anything unexpected happens."""
+        self._require_real_main_import()
+        window = Mock()
+        with patch.object(main_module.erp.gate, 'require_roaster', return_value=True) as mock_require:
+            assert main_module.ensure_roaster(window) is True
+            mock_require.assert_called_once_with(window)
+        with patch.object(main_module.erp.gate, 'require_roaster', side_effect=RuntimeError('boom')):
+            assert main_module.ensure_roaster(window) is False
 
 
     def test_file_open_before_login_is_kept_and_not_opened(self) -> None:
