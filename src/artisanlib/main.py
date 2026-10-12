@@ -246,10 +246,13 @@ class Artisan(QtSingleApplication):
     sendmessage2ArtisanInstanceSignal = pyqtSignal(str,str)
     sendmessage2ArtisanViewerSignal = pyqtSignal(str)
 
-    __slots__ = [ 'sentToBackground', 'plus_sync_cache_expiration', 'artisanviewerMode', 'darkmode', 'style_hints' ]
+    __slots__ = [ 'sentToBackground', 'plus_sync_cache_expiration', 'artisanviewerMode', 'darkmode', 'style_hints', '_pending_open_urls' ]
 
     def __init__(self, args:Any) -> None:
         super().__init__(appGuid, viewerAppGuid, args)
+
+        # files the OS asked us to open while the ERP login was still pending (no activation window yet)
+        self._pending_open_urls:list[QUrl] = []
 
         # with Qt.ConnectionType.QueuedConnection the signal is queued even if called from the same thread
         self.sendmessage2ArtisanInstanceSignal.connect(self._sendMessage2ArtisanInstanceSlot, type=Qt.ConnectionType.QueuedConnection) # type: ignore[call-arg]
@@ -521,10 +524,18 @@ class Artisan(QtSingleApplication):
                         else:
                             # try to open the file in Viewer if it is running
                             self.sendMessage2ArtisanInstance(message, self._viewer_id)
+                else:
+                    # the ERP login is still pending, nothing is opened before it succeeded; remember the file for later
+                    self._pending_open_urls.append(cast(QUrl, a0.url())) # type: ignore[attr-defined] # "QEvent" has no attribute "url"
             except Exception as e: # pylint: disable=broad-except
                 _log.exception(e)
             return True
         return super().event(a0)
+
+    def take_pending_open_urls(self) -> list[QUrl]:
+        urls = self._pending_open_urls
+        self._pending_open_urls = []
+        return urls
 
     # Requests the permission to communicate via Bluetooth, True or False, or if not yet granted, None. Returns the current permission status otherwise.
     # Currently this API is only supported on macOS. On all other platforms this returns always True
@@ -725,6 +736,8 @@ import plus.notifications
 import plus.blend
 import plus.stock
 import plus.schedule
+import erp.gate
+import erp.config
 
 
 
@@ -759,6 +772,11 @@ class VMToolbar(NavigationToolbar): # pylint: disable=abstract-method
         self._last_event:mplLocationevent|None = None
 
         NavigationToolbar.__init__(self, plotCanvas, parent) # type:ignore[no-untyped-call] # ty:ignore[ignore]
+
+        if erp.config.ERP_ONLY:
+            # the artisan.plus actions (plus, subscription) are the first two ones; they stay in place, as updatePlusStatusSlot indexes them
+            for plus_action in self.actions()[:2]:
+                plus_action.setVisible(False)
 
         # lets make the font of the coordinates QLabel a little larger
         f = self.locLabel.font()
@@ -1211,7 +1229,7 @@ class VMToolbar(NavigationToolbar): # pylint: disable=abstract-method
         elif modifiers == Qt.KeyboardModifier.AltModifier:
             # ALT-click (OPTION on macOS) sends the log file by email
             self.aw.sendLog()
-        else:
+        elif not erp.config.ERP_ONLY:
             plus.controller.toggle(self.aw)
 
     def subscription(self) -> None:
@@ -1476,7 +1494,7 @@ class ApplicationWindow(QMainWindow):
         'RoastMenu', 'ConfMenu', 'ToolkitMenu', 'viewMenu', 'helpMenu', 'newRoastMenu', 'fileLoadAction', 'openRecentMenu', 'importMenu',
         'fileSaveAction', 'fileSaveCopyAsAction', 'exportMenu', 'convMenu', 'convFromMenu', 'saveGraphMenu', 'reportMenu', 'htmlAction', 'productionMenu',
         'productionWebAction', 'productionCsvAction', 'productionExcelAction', 'rankingMenu', 'rankingWebAction', 'rankingCsvAction', 'rankingExcelAction',
-        'saveStatisticsMenu', 'printAction', 'quitAction', 'cutAction', 'copyAction', 'pasteAction', 'editGraphAction', 'backgroundAction',
+        'saveStatisticsMenu', 'printAction', 'quitAction', 'erpLogoutAction', 'cutAction', 'copyAction', 'pasteAction', 'editGraphAction', 'backgroundAction',
         'flavorAction', 'switchAction', 'switchETBTAction', 'machineMenu', 'deviceAction', 'commportAction', 'calibrateDelayAction', 'curvesAction',
         'eventsAction', 'alarmAction', 'phasesGraphAction', 'StatisticsAction', 'WindowconfigAction', 'colorsAction', 'themeMenu', 'autosaveAction',
         'batchAction', 'temperatureConfMenu', 'FahrenheitAction', 'CelsiusAction', 'languageMenu', 'analyzeMenu', 'fitIdealautoAction',
@@ -2415,6 +2433,10 @@ class ApplicationWindow(QMainWindow):
         self.quitAction.setMenuRole(QAction.MenuRole.QuitRole)
         self.quitAction.setShortcut(QKeySequence.StandardKey.Quit)
         self.quitAction.triggered.connect(self.fileQuit)
+
+        self.erpLogoutAction:QAction = QAction(QApplication.translate('ERP', 'Đăng xuất ERP...'), self)
+        self.erpLogoutAction.setMenuRole(QAction.MenuRole.NoRole)
+        self.erpLogoutAction.triggered.connect(self.erpLogout)
 
         # EDIT menu
         self.cutAction:QAction = QAction(QApplication.translate('Menu', 'Cut'), self)
@@ -4307,7 +4329,8 @@ class ApplicationWindow(QMainWindow):
 #PLUS
         self.updatePlusStatusSignal.connect(self.updatePlusStatusSlot)
 
-        QTimer.singleShot(2000,self.donate)
+        if not erp.config.ERP_ONLY:
+            QTimer.singleShot(2000,self.donate)
 
         QTimer.singleShot(0, self.logStartupTime)
         QTimer.singleShot(500, self.updateBadge)
@@ -4344,6 +4367,8 @@ class ApplicationWindow(QMainWindow):
                 file_menu.addMenu(self.saveStatisticsMenu)
         file_menu.addSeparator()                       # ---
         file_menu.addAction(self.printAction)          # Print
+        file_menu.addSeparator()                       # ---
+        file_menu.addAction(self.erpLogoutAction)      # Log out of the ERP
         file_menu.addAction(self.quitAction)           # Quit
         return file_menu
 
@@ -4432,10 +4457,11 @@ class ApplicationWindow(QMainWindow):
             view_menu.addAction(self.buttonsAction)
         if self.ui_mode is not UI_MODE.PRODUCTION or self.slidersVisible():
             view_menu.addAction(self.slidersAction)
-        view_menu.addSeparator()
-        view_menu.addAction(self.scheduleAction)
-        if self.app.artisanviewerMode:
-            self.scheduleAction.setEnabled(False) # no scheduler in ArtisanViewer mode
+        if not erp.config.ERP_ONLY: # the scheduler is an artisan.plus feature
+            view_menu.addSeparator()
+            view_menu.addAction(self.scheduleAction)
+            if self.app.artisanviewerMode:
+                self.scheduleAction.setEnabled(False) # no scheduler in ArtisanViewer mode
         view_menu.addSeparator()
         view_menu.addAction(self.lcdsAction)
         view_menu.addAction(self.deltalcdsAction)
@@ -19273,7 +19299,7 @@ class ApplicationWindow(QMainWindow):
             self.scheduler_tasks_visible = toBool(settings.value('SchedulerTasks',self.scheduler_tasks_visible))
             self.scheduler_completed_details_visible = toBool(settings.value('SchedulerCompletedDetails',self.scheduler_completed_details_visible))
             self.scheduler_filters_visible = toBool(settings.value('SchedulerFilter',self.scheduler_filters_visible))
-            if self.scheduleFlag:
+            if self.scheduleFlag and not erp.config.ERP_ONLY:
                 try:
                     QTimer.singleShot(700, lambda:self.schedule(True))
                 except Exception as e: # pylint: disable=broad-except
@@ -21313,6 +21339,13 @@ class ApplicationWindow(QMainWindow):
     @pyqtSlot(bool)
     def fileQuit(self, _:bool = False) -> None:
         self.closeApp()
+
+    @pyqtSlot()
+    @pyqtSlot(bool)
+    def erpLogout(self, _:bool = False) -> None:
+        # ends the ERP session (after confirmation) and quits; the next start asks for the ERP login again
+        if erp.gate.logout(self):
+            self.closeApp()
 
     @pyqtSlot()
     @pyqtSlot(bool)
@@ -27856,8 +27889,9 @@ def initialize_locale(my_app:Artisan) -> str:
     return locale
 
 def ensure_startup_login(app_window:'ApplicationWindow') -> bool:
+    # the main window is only shown after a successful login to the LVG ERP
     try:
-        return plus.controller.require_startup_login(app_window)
+        return erp.gate.require_login(app_window)
     except Exception as e:
         import logging
         logging.getLogger(__name__).exception('Startup login failed: %s', e)
@@ -27887,7 +27921,8 @@ def main() -> None:
 
     appWindow = ApplicationWindow(locale=locale_str, WebEngineSupport=QtWebEngineSupport, artisanviewerFirstStart=artisanviewerFirstStart)
 
-    app.setActivationWindow(appWindow,activateOnMessage=False) # set the activation window for the QtSingleApplication
+    # NOTE: the activation window of the QtSingleApplication is set only after the ERP login succeeded (see below),
+    # so that no file or URL is opened into the still hidden main window while the login is pending
 
 
     # only here deactivating the app napping seems to have an effect
@@ -27940,10 +27975,17 @@ def main() -> None:
                     url.setUrl(argv_file)
                     app.open_url(url)
 
-        if not app.artisanviewerMode and not ensure_startup_login(appWindow):
+        # mandatory ERP login, for the main application as well as for the Viewer
+        if not ensure_startup_login(appWindow):
             sys.exit(1)
 
+        app.setActivationWindow(appWindow,activateOnMessage=False) # set the activation window for the QtSingleApplication
+
         appWindow.show()
+
+        # open the files the OS asked for while the login was pending
+        for pending_url in app.take_pending_open_urls():
+            app.open_url(pending_url)
 
         if sys.argv and len(sys.argv) > 1:
             # on Linux (and RPi), local argv_file paths may contain percent encoded spaces %20 and a file:// URL prefix
