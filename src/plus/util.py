@@ -1,25 +1,31 @@
 #
 # util.py
 #
-# Copyright (c) 2023, Paul Holleis, Marko Luther
-# All rights reserved.
-#
-#
 # ABOUT
-# This module connects to the artisan.plus inventory management service
-
-# LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
+# This module connects to the artisan platform
 #
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
+# LICENSE
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
+# AUTHOR
+# Marko Luther
 
 from PyQt6.QtCore import QSize, pyqtSlot
 from PyQt6.QtGui import QIcon
@@ -211,8 +217,8 @@ def limittext(maxlen: int, s: str|None) -> str|None:
 
 
 def addString2dict(dict_source:'ProfileData', key_source:str, dict_target:dict[str, Any], key_target:str, maxlen:int) -> None:
-    if key_source in dict_source and dict_source[key_source]: # type:ignore[literal-required] # pyrefly: ignore # TypedDict key must be a string literal; expected one of (
-        txt = limittext(maxlen, decodeLocal(dict_source[key_source])) # type:ignore[literal-required] # pyrefly: ignore # TypedDict key must be a string literal; expected one of
+    if key_source in dict_source and dict_source[key_source]: # type:ignore[literal-required, misc, invalid-key, unused-ignore] # pyrefly: ignore # TypedDict key must be a string literal; expected one of (
+        txt = limittext(maxlen, decodeLocal(dict_source[key_source])) # type:ignore[literal-required, misc, unused-ignore] # pyrefly: ignore # TypedDict key must be a string literal; expected one of
         if txt is not None:
             dict_target[key_target] = txt
 
@@ -231,8 +237,8 @@ def addNum2dict(
     digits:int,
     factor:float=1.,
 ) -> None:
-    if key_source in dict_source and dict_source[key_source]: # type: ignore[literal-required] # TypedDict key must be a string literal; expected one of
-        n = dict_source[key_source]  # type:ignore[literal-required] # TypedDict key must be a string literal; expected one of
+    if key_source in dict_source and dict_source[key_source]: # type: ignore[literal-required, misc, unused-ignore] # TypedDict key must be a string literal; expected one of
+        n = dict_source[key_source]  # type:ignore[literal-required, misc, unused-ignore] # TypedDict key must be a string literal; expected one of
         if n is not None and isinstance(n, (float, int)):
             n = n * factor
         n = limitnum(minn, maxn, n)  # may return None # pyright:ignore[reportUnknownArgumentType]
@@ -275,8 +281,8 @@ def addAllNum2dict(
 
 
 def addTime2dict(dict_source:'ProfileData|ComputedProfileInformation', key_source:str, dict_target:dict[str, Any], key_target:str) -> None:
-    if key_source in dict_source and dict_source[key_source]:  # type:ignore[literal-required] # pyrefly: ignore # TypedDict key must be a string literal; expected one of
-        tx = limittime(dict_source[key_source])  # type:ignore[literal-required] # pyrefly: ignore # TypedDict key must be a string literal; expected one of
+    if key_source in dict_source and dict_source[key_source]:  # type:ignore[literal-required, misc, unused-ignore] # pyrefly: ignore # TypedDict key must be a string literal; expected one of
+        tx = limittime(dict_source[key_source])  # type:ignore[literal-required, misc, unused-ignore] # pyrefly: ignore # TypedDict key must be a string literal; expected one of
         if tx is not None:
             dict_target[key_target] = float2floatMin(tx)
 
@@ -296,14 +302,14 @@ def addAllTime2dict(dict_source:'ProfileData|ComputedProfileInformation', dict_t
 
 # mode indicates the temperature unit, "C" or "F", of the data if not None
 def addTemp2dict(dict_source:'ProfileData|ComputedProfileInformation', key_source:str, dict_target:dict[str, Any], key_target:str, mode:str|None=None) -> None:
-    if key_source in dict_source and dict_source[key_source]:  # type:ignore[literal-required] # pyrefly: ignore # TypedDict key must be a string literal; expected one of
-        temp = limittemp(temp2C(dict_source[key_source],mode))  # type:ignore[literal-required] # pyrefly: ignore # TypedDict key must be a string literal; expected one of
+    if key_source in dict_source and dict_source[key_source]:  # type:ignore[literal-required, misc, unused-ignore] # pyrefly: ignore # TypedDict key must be a string literal; expected one of
+        temp = limittemp(temp2C(dict_source[key_source],mode))  # type:ignore[literal-required, misc, unused-ignore] # pyrefly: ignore # TypedDict key must be a string literal; expected one of
         if temp is not None and temp != -1 and not numpy.isnan(temp):
             dict_target[key_target] = float2floatMin(temp)
 
 def addTempDiff2dict(dict_source:'ProfileData|ComputedProfileInformation', key_source:str, dict_target:dict[str, Any], key_target:str) -> None:
-    if key_source in dict_source and dict_source[key_source]:  # type:ignore[literal-required] # pyrefly: ignore # TypedDict key must be a string literal; expected one of
-        temp = limittemp(tempDiff2C(dict_source[key_source]))  # type:ignore[literal-required] # pyrefly: ignore # TypedDict key must be a string literal; expected one of
+    if key_source in dict_source and dict_source[key_source]:  # type:ignore[literal-required, misc, unused-ignore] # pyrefly: ignore # TypedDict key must be a string literal; expected one of
+        temp = limittemp(tempDiff2C(dict_source[key_source]))  # type:ignore[literal-required,misc, unused-ignore] # pyrefly: ignore # TypedDict key must be a string literal; expected one of
         if temp is not None and temp != -1 and not numpy.isnan(temp):
             dict_target[key_target] = float2floatMin(temp)
 
@@ -322,8 +328,8 @@ def addAllTemp2dict(dict_source:'ProfileData|ComputedProfileInformation', dict_t
 
 # mode indicates the temperature unit, "C" or "F", of the data if not None
 def addRoRTemp2dict(dict_source:'ProfileData|ComputedProfileInformation', key_source:str, dict_target:dict[str, Any], key_target:str, mode:str|None=None) -> None:
-    if key_source in dict_source and dict_source[key_source]:  # type:ignore[literal-required] # pyrefly: ignore # TypedDict key must be a string literal; expected one of
-        temp = limittemp(RoRtemp2C(dict_source[key_source],mode))  # type:ignore[literal-required] # pyrefly: ignore # TypedDict key must be a string literal; expected one of
+    if key_source in dict_source and dict_source[key_source]:  # type:ignore[literal-required, misc, unused-ignore] # pyrefly: ignore # TypedDict key must be a string literal; expected one of
+        temp = limittemp(RoRtemp2C(dict_source[key_source],mode))  # type:ignore[literal-required, misc, unused-ignore] # pyrefly: ignore # TypedDict key must be a string literal; expected one of
         if temp is not None:
             dict_target[key_target] = float2floatMin(temp)
 
@@ -331,8 +337,8 @@ def addRoRTemp2dict(dict_source:'ProfileData|ComputedProfileInformation', key_so
 # returns extends dict_target by item with key_target holding the
 # dict_source[key_source] value if key_source in dict_source and not empty
 def add2dict(dict_source:'ProfileData', key_source:str, dict_target:dict[str, Any], key_target:str, if_non_empty:bool = True) -> None:
-    if key_source in dict_source and (not if_non_empty or dict_source[key_source]):  # type:ignore[literal-required] # pyrefly: ignore # TypedDict key must be a string literal; expected one of
-        dict_target[key_target] = dict_source[key_source]  # type:ignore[literal-required] # pyrefly: ignore] # TypedDict key must be a string literal; expected one of
+    if key_source in dict_source and (not if_non_empty or dict_source[key_source]):  # type:ignore[literal-required, misc, unused-ignore] # pyrefly: ignore # TypedDict key must be a string literal; expected one of
+        dict_target[key_target] = dict_source[key_source]  # type:ignore[literal-required, misc, unused-ignore] # pyrefly: ignore # TypedDict key must be a string literal; expected one of
 
 
 def getLanguage() -> str:
@@ -433,9 +439,10 @@ def schedulerLink() -> str:
 
 # HiRes plus QMessageBox icon
 
-def setPlusIcon(mbox:'QMessageBox') -> None:
+def setPlusIcon(mbox:'QMessageBox', darkmode:bool=False) -> None:
     basedir = os.path.join(getResourcePath(),'Icons')
-    p = os.path.join(basedir, 'plus-notification.svg')
+#    p = os.path.join(basedir, 'artisan-notification.svg')
+    p = os.path.join(basedir, ('plus-connected.svg' if darkmode else 'white_plus-connected.svg'))
     app_style:QStyle|None = QApplication.style()
     if app_style is not None:
         icon_size = app_style.pixelMetric(QStyle.PixelMetric.PM_MessageBoxIconSize)

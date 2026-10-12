@@ -1,18 +1,28 @@
 #!/usr/bin/env python3
 
 # ABOUT
-# Aillio R2 support for Artisan
+# Aillio R2 support for artisan scope
 
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
 # LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
-
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
 # AUTHOR
 # mikefsq, r2 2025
 
@@ -24,11 +34,11 @@ from multiprocessing import Pipe
 from platform import system
 from collections.abc import Generator
 
-import usb.core # type: ignore[import-untyped] # ty:ignore[ignore]
-import usb.util # type: ignore[import-untyped] # ty:ignore[ignore]
+import usb.core # type: ignore[import-untyped]
+import usb.util # type: ignore[import-untyped] # zuban: ignore[no-redef]
 
 if system().startswith('Windows'):
-    import libusb_package # pyright:ignore[reportMissingImports] # pylint: disable=import-error # ty:ignore[unresolved-import]
+    import libusb_package # type: ignore[import-not-found, unused-ignore] # pyright:ignore[reportMissingImports] # pylint: disable=import-error
 
 
 import logging
@@ -36,16 +46,16 @@ from typing import Final, Any, TypedDict, TYPE_CHECKING
 
 if TYPE_CHECKING:
     try:
-        from multiprocessing.connection import PipeConnection as Connection # type: ignore[unused-ignore,attr-defined,assignment] # ty:ignore[ignore] # pylint: disable=unused-import
+        from multiprocessing.connection import PipeConnection as Connection # type: ignore[unused-ignore,attr-defined,assignment] # pylint: disable=unused-import
     except ImportError:
-        from multiprocessing.connection import Connection # type: ignore[unused-ignore,attr-defined,assignment] # ty:ignore[ignore] # pylint: disable=unused-import
+        from multiprocessing.connection import Connection # type: ignore[unused-ignore,attr-defined,assignment] # pylint: disable=unused-import
     from usb.core import Configuration, Interface, Endpoint
 
 _log: Final[logging.Logger] = logging.getLogger(__name__)
 
 
 def _load_library(find_library:Any = None) -> Any:
-    import usb.libloader # type: ignore[import-untyped, unused-ignore] # ty:ignore[ignore] # pylint: disable=redefined-outer-name
+    import usb.libloader # type: ignore[import-untyped, unused-ignore] # pylint: disable=redefined-outer-name
     return usb.libloader.load_locate_library(
                 ('usb-1.0', 'libusb-1.0', 'usb'),
                 'cygusb-1.0.dll', 'Libusb 1',
@@ -111,8 +121,8 @@ class AillioR2:
         self.worker_thread_run:bool = True
 
         # Communication pipes
-        self.parent_pipe: Connection|None = None # type:ignore[no-any-unimported, unused-ignore] # ty:ignore[ignore]
-        self.child_pipe: Connection|None = None # type:ignore[no-any-unimported, unused-ignore] # ty:ignore[ignore]
+        self.parent_pipe: Connection|None = None # type:ignore[no-any-unimported, unused-ignore]
+        self.child_pipe: Connection|None = None # type:ignore[no-any-unimported, unused-ignore]
         self.worker_thread: threading.Thread|None = None
 
         # Basic configuration
@@ -121,11 +131,11 @@ class AillioR2:
         self.__dbg('init')
 
         # USB handling
-        self.usbhandle:Generator[usb.core.Device, Any, None]|usb.core.Device|None = None # type:ignore[no-any-unimported,unused-ignore] # ty:ignore[ignore]
+        self.usbhandle:Generator[usb.core.Device, Any, None]|usb.core.Device|None = None # type:ignore[no-any-unimported,unused-ignore]
         self.protocol:int = 2
         self.model:str = 'Unknown'
-        self.ep_in:Endpoint|None = None  # type:ignore[no-any-unimported] # ty:ignore[ignore]
-        self.ep_out:Endpoint|None = None # type:ignore[no-any-unimported] # ty:ignore[ignore]
+        self.ep_in:Endpoint|None = None  # type:ignore[no-any-unimported]
+        self.ep_out:Endpoint|None = None # type:ignore[no-any-unimported]
         self.TIMEOUT = 1000  # USB timeout in milliseconds
         self.FRAME_SIZE = 64  # Standard USB packet size
 
@@ -281,9 +291,9 @@ class AillioR2:
                         '/usr/lib/aarch64-linux-gnu/libusb-1.0.so'
                         '/usr/lib/aarch64-linux-gnu/libusb-1.0.so.0']:
                     if os.path.isfile(shared_libusb_path):
-                        import usb.backend.libusb1 as libusb10  # type: ignore[import-untyped, unused-ignore] # ty:ignore[ignore]
+                        import usb.backend.libusb1 as libusb10  # type: ignore[import-untyped, unused-ignore]
                         libusb10._load_library = _load_library  # pylint: disable=protected-access # overwrite the overwrite of the pyinstaller runtime hook pyi_rth_usb.py
-                        from usb.backend.libusb1 import get_backend  # type: ignore[import-untyped, unused-ignore] # ty:ignore[ignore]
+                        from usb.backend.libusb1 import get_backend  # type: ignore[import-untyped, unused-ignore]
                         backend = get_backend(find_library=lambda _,shared_libusb_path=shared_libusb_path: shared_libusb_path)
                         break
 
@@ -313,23 +323,23 @@ class AillioR2:
 
         try:
             try:
-                self.usbhandle.reset() # type:ignore[union-attr] # ty:ignore[ignore] # pyright:ignore[reportAttributeAccessIssue]
+                self.usbhandle.reset() # type:ignore[union-attr] # pyright:ignore[reportAttributeAccessIssue]
             except Exception as e: # pylint: disable=broad-except
                 self.__dbg(f'Warning: Could not reset device: {str(e)}')
 
-            if not system().startswith('Windows') and self.usbhandle.is_kernel_driver_active(self.AILLIO_INTERFACE): # type:ignore[union-attr] # ty:ignore[ignore] # pyright:ignore[reportAttributeAccessIssue]
+            if not system().startswith('Windows') and self.usbhandle.is_kernel_driver_active(self.AILLIO_INTERFACE): # type:ignore[union-attr] # pyright:ignore[reportAttributeAccessIssue]
                 try:
-                    self.usbhandle.detach_kernel_driver(self.AILLIO_INTERFACE) # type:ignore[union-attr] # ty:ignore[ignore] # pyright: ignore[reportAttributeAccessIssue]
+                    self.usbhandle.detach_kernel_driver(self.AILLIO_INTERFACE) # type:ignore[union-attr] # pyright: ignore[reportAttributeAccessIssue]
                 except Exception as e: # pylint: disable=broad-except
                     self.__dbg(f'Warning: Failed to detach kernel driver: {str(e)}')
 
             try:
-                self.usbhandle.set_configuration(self.AILLIO_CONFIGURATION) # type:ignore[union-attr] # ty:ignore[ignore] # pyright: ignore[reportAttributeAccessIssue]
+                self.usbhandle.set_configuration(self.AILLIO_CONFIGURATION) # type:ignore[union-attr] # pyright: ignore[reportAttributeAccessIssue]
             except Exception as e: # pylint: disable=broad-except
                 self.__dbg(f'Warning: Could not set configuration: {str(e)}')
 
-            cfg:Configuration = self.usbhandle.get_active_configuration() # type:ignore[union-attr, no-any-unimported] # ty:ignore[ignore] # pyrefly: ignore[bad-assignment] # pyright: ignore[reportAssignmentType, reportAttributeAccessIssue]
-            intf:Interface = cfg[(self.AILLIO_INTERFACE,0)] # type:ignore[no-any-unimported] # ty:ignore[ignore]
+            cfg:Configuration = self.usbhandle.get_active_configuration() # type:ignore[union-attr, no-any-unimported] # pyrefly: ignore[bad-assignment] # pyright: ignore[reportAssignmentType, reportAttributeAccessIssue]
+            intf:Interface = cfg[(self.AILLIO_INTERFACE,0)] # type:ignore[no-any-unimported]
 
             try:
                 usb.util.claim_interface(self.usbhandle, self.AILLIO_INTERFACE)
@@ -340,10 +350,10 @@ class AillioR2:
             self.ep_in = None
 
             for ep in intf:
-                self.__dbg(f'Found endpoint: {ep.bEndpointAddress:#x}')  # pyright:ignore[reportAttributeAccessIssue]
-                if usb.util.endpoint_direction(ep.bEndpointAddress) == usb.util.ENDPOINT_OUT: # pyright:ignore[reportUnknownArgumentType,reportAttributeAccessIssue]
+                self.__dbg(f'Found endpoint: {ep.bEndpointAddress:#x}') # type:ignore[attr-defined, unused-ignore] # pyright:ignore[reportAttributeAccessIssue]
+                if usb.util.endpoint_direction(ep.bEndpointAddress) == usb.util.ENDPOINT_OUT: # type:ignore[attr-defined, unused-ignore] # pyright:ignore[reportUnknownArgumentType,reportAttributeAccessIssue]
                     self.ep_out = ep
-                elif usb.util.endpoint_direction(ep.bEndpointAddress) == usb.util.ENDPOINT_IN: # pyright:ignore[reportUnknownArgumentType,reportAttributeAccessIssue]
+                elif usb.util.endpoint_direction(ep.bEndpointAddress) == usb.util.ENDPOINT_IN: # type:ignore[attr-defined, unused-ignore] # pyright:ignore[reportUnknownArgumentType,reportAttributeAccessIssue]
                     self.ep_in = ep
 
             if self.ep_out is None:
@@ -352,8 +362,8 @@ class AillioR2:
                 raise OSError('Input endpoint not found')
 
             self.__dbg('Endpoints configured successfully')
-            self.__dbg(f'Output endpoint: {self.ep_out.bEndpointAddress:#x}') # pyright:ignore[reportAttributeAccessIssue]
-            self.__dbg(f'Input endpoint: {self.ep_in.bEndpointAddress:#x}') # pyright:ignore[reportAttributeAccessIssue]
+            self.__dbg(f'Output endpoint: {self.ep_out.bEndpointAddress:#x}') # type:ignore[attr-defined, unused-ignore] # pyright:ignore[reportAttributeAccessIssue]
+            self.__dbg(f'Input endpoint: {self.ep_in.bEndpointAddress:#x}') # type:ignore[attr-defined, unused-ignore] # pyright:ignore[reportAttributeAccessIssue]
 
             self.parent_pipe, self.child_pipe = Pipe() # pyright:ignore[reportAttributeAccessIssue]
             self.worker_thread = threading.Thread(target=self.__updatestate,
@@ -443,7 +453,7 @@ class AillioR2:
             print(f"{i:04x}: {hex_values:<48} {ascii_values}")
 
 
-    def __updatestate(self, p:'Connection') -> None: # type:ignore[no-any-unimported, unused-ignore] # ty:ignore[ignore]
+    def __updatestate(self, p:'Connection') -> None: # type:ignore[no-any-unimported, unused-ignore]
         """Worker thread main loop for updating roaster state data"""
         while self.worker_thread_run:
             try:

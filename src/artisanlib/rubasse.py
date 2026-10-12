@@ -1,6 +1,26 @@
 #
 # ABOUT
-# RUBASSE CSV Roast Profile importer for Artisan
+# RUBASSE CSV roast profile importer for artisan scope
+#
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
+# LICENSE
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
 
 import os
 import csv
@@ -78,6 +98,10 @@ def extractProfileRubasseCSV(file:str,
             temp1.append(et)
 
             bt:float = -1.0
+            try:
+                bt = float(item['BT'])
+            except Exception: # pylint: disable=broad-except
+                pass
             temp2.append(bt)
 
             heaterV:float = -1.0
@@ -174,7 +198,7 @@ def extractProfileRubasseCSV(file:str,
                                 specialeventsvalue.append(eventsExternal2InternalValue(int(round(v))))
                                 specialevents.append(i)
                                 specialeventstype.append(3)
-                                specialeventsStrings.append(f"{float(item['Heater'])}%")
+                                specialeventsStrings.append(f"{float(item['Heater']):.0f}%")
                         else:
                             heater_last = None
                 except Exception as e: # pylint: disable=broad-except
@@ -230,8 +254,8 @@ def extractProfileRubasseCSV(file:str,
     res['extratemp2'] = [extra2,extra4,extra6]
     res['extramathexpression2'] = ['','','']
 
-    res['extraCurveVisibility1'] = [False, True, False, False, True, True, True, True, True, True]
-    res['extraCurveVisibility2'] = [False, False, False, False, True, True, True, True, True, True]
+    res['extraCurveVisibility1'] = [False, False, False, False, True, True, True, True, True, True]
+    res['extraCurveVisibility2'] = [False, True, True, False, True, True, True, True, True, True]
     res['extraDelta1'] = [False]*10
     res['extraDelta2'] = [False]*10
     res['extraNoneTempHint1'] = [True, True, True]

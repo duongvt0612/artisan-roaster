@@ -1,25 +1,36 @@
 #
 # ABOUT
-# Artisan Roast Comparator
-
+# artisan roast comparator
+#
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
 # LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
-
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
 # AUTHOR
 # Marko Luther, 2023
 
 import sys
 import platform
 import numpy
-from matplotlib import ticker, transforms # type:ignore[untyped-import,unused-ignore] # ty:ignore[ignore]
-from matplotlib import rcParams # type:ignore[untyped-import,unused-ignore] # ty:ignore[ignore]
+from pathlib import Path
+from matplotlib import ticker, transforms # type:ignore[untyped-import,unused-ignore]
+from matplotlib import rcParams # type:ignore[untyped-import,unused-ignore]
 import logging
 from collections.abc import Callable, Sequence
 from typing import override, Final, TypedDict, Literal, cast, TYPE_CHECKING
@@ -27,19 +38,20 @@ from typing import override, Final, TypedDict, Literal, cast, TYPE_CHECKING
 if TYPE_CHECKING:
     from artisanlib.main import ApplicationWindow # noqa: F401 # pylint: disable=unused-import
     from artisanlib.atypes import ProfileData # pylint: disable=unused-import
-    from matplotlib.lines import Line2D # type:ignore[untyped-import,unused-ignore] # ty:ignore[ignore] # pylint: disable=unused-import
-    from matplotlib.backend_bases import PickEvent # type:ignore[untyped-import,unused-ignore] # ty:ignore[ignore] # pylint: disable=unused-import
-    from matplotlib.legend import Legend # type:ignore[untyped-import,unused-ignore] # ty:ignore[ignore] # pylint: disable=unused-import
+    from matplotlib.lines import Line2D # type:ignore[untyped-import,unused-ignore] # pylint: disable=unused-import
+    from matplotlib.backend_bases import PickEvent, Event # type:ignore[untyped-import,unused-ignore] # pylint: disable=unused-import
+    from matplotlib.legend import Legend # type:ignore[untyped-import,unused-ignore] # pylint: disable=unused-import
     from PyQt6.QtWidgets import QLayoutItem, QLayout, QScrollBar # pylint: disable=unused-import
     from PyQt6.QtGui import QStandardItem, QKeyEvent, QDropEvent, QDragEnterEvent, QCloseEvent # pylint: disable=unused-import
     from PyQt6.QtCore import QMimeData # pylint: disable=unused-import
 
 from artisanlib.util import (deltaLabelUTF8, decodeLocal, decodeLocalStrict, stringfromseconds, fromFtoCstrict,
-        fromCtoFstrict, fill_gaps, float2float, deserialize, float2str)
+        fromCtoFstrict, fill_gaps, float2float, deserialize, float2str, smooth_list)
 from artisanlib.suppress_errors import suppress_stdout_stderr
 from artisanlib.dialogs import ArtisanDialog
 from artisanlib.widgets import MyQComboBox
 from artisanlib.qcheckcombobox import CheckComboBox
+from artisanlib.table_style import horizontal_header_style, vertical_header_style
 
 with suppress_stdout_stderr():
     from matplotlib import colormaps # pyrefly:ignore[missing-module-attribute]
@@ -87,15 +99,12 @@ class RoastProfile:
         self.aligned:bool = True # if the profile could not be aligned it is not drawn
         self.active:bool = True # if selected or all are unselected; active profiles are drawn in color, inactive profiles in gray
         self.color:tuple[float, float, float, float] = color
-        hslf:tuple[float|None, float|None, float|None, float|None] = QColor.fromRgbF(*color).getHslF()
+        hslf:tuple[float, float, float, float] = QColor.fromRgbF(*color).getHslF()
         self.gray:tuple[float, float, float, float]
-        ch:float|None = hslf[0]
-        cl:float|None = hslf[2]
-        ca:float|None = hslf[3]
-        if ch is not None and cl is not None and ca is not None:
-            g0 = QColor.fromHslF(ch,0,cl,ca)
-        else:
-            g0 = QColor.fromHslF(0.5,0,0.5,0.5) # saturation set to 0
+        ch:float = hslf[0]
+        cl:float = hslf[2]
+        ca:float = hslf[3]
+        g0 = QColor.fromHslF(ch,0,cl,ca)
         self.gray = (
                 g0.redF(),
                 g0.greenF(),
@@ -327,15 +336,15 @@ class RoastProfile:
                 self.metadata['weight'] = str(w).rstrip('0').rstrip('.') + weight_unit
         if 'moisture_greens' in profile and profile['moisture_greens'] != 0.0:
             self.metadata['moisture_greens'] = profile['moisture_greens']
-        if 'ambientTemp' in profile:
+        if 'ambientTemp' in profile and self.ambientTemp != 0:
             self.metadata['ambientTemp'] = f'{float2float(self.ambientTemp):g}{self.aw.qmc.mode}'
-        if 'ambient_humidity' in profile:
+        if 'ambient_humidity' in profile and profile['ambient_humidity'] != 0:
             self.metadata['ambient_humidity'] = f"{float2float(profile['ambient_humidity']):g}%"
-        if 'ambient_pressure' in profile:
+        if 'ambient_pressure' in profile and profile['ambient_pressure'] != 0:
             self.metadata['ambient_pressure'] = f"{float2float(profile['ambient_pressure']):g}hPa"
-        if 'computed' in profile and 'weight_loss' in profile['computed']:
+        if 'computed' in profile and 'weight_loss' in profile['computed'] and 'weight' in profile and profile['weight'][1] != 0.0:
             self.metadata['weight_loss'] = f"-{profile['computed']['weight_loss']:g}%"
-        if 'ground_color' in profile:
+        if 'ground_color' in profile and profile['ground_color'] != 0:
             self.metadata['ground_color'] = f"#{float2str(profile['ground_color'])}"
         if 'computed' in profile and 'AUC' in profile['computed'] and \
                 profile['computed']['AUC'] != 0:
@@ -366,8 +375,10 @@ class RoastProfile:
             timex_lin = numpy.linspace(self.timex[0],self.timex[-1],len(self.timex))
         else:
             timex_lin = None
-        self.stemp1 = list(self.aw.qmc.smooth_list(self.timex,self.temp1,window_len=self.aw.qmc.curvefilter,decay_smoothing=decay_smoothing_p,a_lin=timex_lin))
-        self.stemp2 = list(self.aw.qmc.smooth_list(self.timex,self.temp2,window_len=self.aw.qmc.curvefilter,decay_smoothing=decay_smoothing_p,a_lin=timex_lin))
+        self.stemp1 = list(smooth_list(self.timex,self.temp1,window_len=self.aw.qmc.curvefilter,decay_smoothing=decay_smoothing_p,a_lin=timex_lin,
+                medfilt_factor=self.aw.qmc.median_filter_factor, filter_dropouts=self.aw.qmc.filterDropOuts))
+        self.stemp2 = list(smooth_list(self.timex,self.temp2,window_len=self.aw.qmc.curvefilter,decay_smoothing=decay_smoothing_p,a_lin=timex_lin,
+                medfilt_factor=self.aw.qmc.median_filter_factor, filter_dropouts=self.aw.qmc.filterDropOuts))
         # we resample the temperatures of extra device curves to regular interval timestamps
         self.extrastemp1 = []
         self.extrastemp2 = []
@@ -376,12 +387,16 @@ class RoastProfile:
                 timex_lin = numpy.linspace(timex[0],timex[-1],len(timex))
             else:
                 timex_lin = None
-            self.extrastemp1.append(list(self.aw.qmc.smooth_list(timex,self.extratemp1[i],window_len=self.aw.qmc.curvefilter,decay_smoothing=decay_smoothing_p,a_lin=timex_lin)))
-            self.extrastemp2.append(list(self.aw.qmc.smooth_list(timex,self.extratemp2[i],window_len=self.aw.qmc.curvefilter,decay_smoothing=decay_smoothing_p,a_lin=timex_lin)))
+            self.extrastemp1.append(list(smooth_list(timex,self.extratemp1[i],window_len=self.aw.qmc.curvefilter,decay_smoothing=decay_smoothing_p,a_lin=timex_lin,
+                medfilt_factor=self.aw.qmc.median_filter_factor, filter_dropouts=self.aw.qmc.filterDropOuts)))
+            self.extrastemp2.append(list(smooth_list(timex,self.extratemp2[i],window_len=self.aw.qmc.curvefilter,decay_smoothing=decay_smoothing_p,a_lin=timex_lin,
+                medfilt_factor=self.aw.qmc.median_filter_factor, filter_dropouts=self.aw.qmc.filterDropOuts)))
         # recompute deltas
         cf = self.aw.qmc.curvefilter*2 # we smooth twice as heavy for PID/RoR calculation as for normal curve smoothing
-        t1 = self.aw.qmc.smooth_list(self.timex,self.temp1,window_len=cf,decay_smoothing=decay_smoothing_p,a_lin=timex_lin)
-        t2 = self.aw.qmc.smooth_list(self.timex,self.temp2,window_len=cf,decay_smoothing=decay_smoothing_p,a_lin=timex_lin)
+        t1 = smooth_list(self.timex,self.temp1,window_len=cf,decay_smoothing=decay_smoothing_p,a_lin=timex_lin,
+                medfilt_factor=self.aw.qmc.median_filter_factor, filter_dropouts=self.aw.qmc.filterDropOuts)
+        t2 = smooth_list(self.timex,self.temp2,window_len=cf,decay_smoothing=decay_smoothing_p,a_lin=timex_lin,
+                medfilt_factor=self.aw.qmc.median_filter_factor, filter_dropouts=self.aw.qmc.filterDropOuts)
         if self.timeindex[0]>-1:
             RoR_start = min(self.timeindex[0]+10, len(self.timex)-1)
         else:
@@ -420,18 +435,19 @@ class RoastProfile:
         self.events1 = []
         self.events2 = []
         self.events_timex = []
-        if self.stemp1 is not None and self.stemp2 is not None: # type:ignore[redundant-expr] # ty:ignore[ignore]
+        if self.stemp1 is not None and self.stemp2 is not None: # type:ignore[redundant-expr]
             for ti in self.timeindex[:-1]:
-                temp1:float|None = (self.stemp1[ti] if len(self.stemp1)>ti else None)
-                temp2:float|None = (self.stemp2[ti] if len(self.stemp2)>ti else None)
-                if ((len(self.events1) == 0 and ti != -1) or ti > 0):
-                    self.events1.append(temp1)
-                    self.events2.append(temp2)
-                    self.events_timex.append(self.timex[ti])
-                else:
-                    self.events1.append(None)
-                    self.events2.append(None)
-                    self.events_timex.append(None)
+                if ti >= 0 and len(self.timex)>0:
+                    temp1:float|None = (self.stemp1[ti] if len(self.stemp1)>ti else None)
+                    temp2:float|None = (self.stemp2[ti] if len(self.stemp2)>ti else None)
+                    if ((len(self.events1) == 0 and ti != -1) or ti > 0):
+                        self.events1.append(temp1)
+                        self.events2.append(temp2)
+                        self.events_timex.append(self.timex[ti])
+                    else:
+                        self.events1.append(None)
+                        self.events2.append(None)
+                        self.events_timex.append(None)
         # update special events
         if self.specialevents is not None and self.specialeventstype is not None and self.specialeventsvalue is not None:
             # calculated bot and top corresponding to the temperature positions of the event values 0 and 100
@@ -499,19 +515,21 @@ class RoastProfile:
                 except Exception as ex: # pylint: disable=broad-except
                     _log.exception(ex)
             # add a last event at DROP/END to extend the lines to the end of roast
-            if not self.aw.qmc.compareRoast and self.aw.qmc.compareBBP:
-                # BBP-only mode
-                end = (self.timex[-1] if self.timeindex[0] == -1 else self.timex[self.timeindex[0]])
-            else:
-                end = (self.timex[-1] if self.timeindex[6] == 0 else self.timex[self.timeindex[6]])
-            if self.E1:
-                self.E1.append((end,self.E1[-1][1]))
-            if self.E2:
-                self.E2.append((end,self.E2[-1][1]))
-            if self.E3:
-                self.E3.append((end,self.E3[-1][1]))
-            if self.E4:
-                self.E4.append((end,self.E4[-1][1]))
+            # (only for non-empty profiles)
+            if len(self.timex)>0:
+                if not self.aw.qmc.compareRoast and self.aw.qmc.compareBBP:
+                    # BBP-only mode
+                    end = (self.timex[-1] if self.timeindex[0] == -1 else self.timex[self.timeindex[0]])
+                else:
+                    end = (self.timex[-1] if self.timeindex[6] == 0 else self.timex[self.timeindex[6]])
+                if self.E1:
+                    self.E1.append((end,self.E1[-1][1]))
+                if self.E2:
+                    self.E2.append((end,self.E2[-1][1]))
+                if self.E3:
+                    self.E3.append((end,self.E3[-1][1]))
+                if self.E4:
+                    self.E4.append((end,self.E4[-1][1]))
 
     def firstTime(self) -> float:
         try:
@@ -529,7 +547,7 @@ class RoastProfile:
         try:
             return self.timex[self.endTimeIdx]
         except Exception: # pylint: disable=broad-except
-            return self.timex[-1]
+            return (self.timex[-1] if len(self.timex)>0 else 0)
 
     def setVisible(self, b:bool) -> None:
         self.visible = b
@@ -1045,19 +1063,20 @@ class roastCompareDlg(ArtisanDialog):
         settings1Layout = QHBoxLayout()
         settings1Layout.addWidget(self.modeComboBox)
         settings1Layout.addStretch()
-        settings1Layout.addSpacing(10)
-        settings1Layout.addStretch()
+        settings1Layout.addSpacing(8)
         settings1Layout.addWidget(alignLabel)
+        settings1Layout.addSpacing(4)
         settings1Layout.addWidget(self.alignComboBox)
 
         settings2Layout = QHBoxLayout()
         settings2Layout.addWidget(self.cb)
-        settings1Layout.addSpacing(2)
+        settings2Layout.addSpacing(4)
         settings2Layout.addWidget(self.eventsComboBox)
 
         settingsLayout = QVBoxLayout()
         settingsLayout.addLayout(settings2Layout)
         settingsLayout.addLayout(settings1Layout)
+        settingsLayout.setSpacing(2)
 
         buttonLayout = QHBoxLayout()
         buttonLayout.addStretch()
@@ -1093,7 +1112,7 @@ class roastCompareDlg(ArtisanDialog):
         self.disableButtons()
         self.aw.disableEditMenus(compare=True)
 
-        self.pick_handler_id = self.aw.qmc.fig.canvas.mpl_connect('pick_event', self.onpick_event) # type: ignore[arg-type] # ty:ignore[ignore] # incompatible type "Callable[[PickEvent], None]"; expected "Callable[[Event], Any]
+        self.pick_handler_id = self.aw.qmc.fig.canvas.mpl_connect('pick_event', cast('Callable[[Event],None]', self.onpick_event))
 
         settings = QSettings()
         if settings.contains('CompareGeometry'):
@@ -1479,10 +1498,10 @@ class roastCompareDlg(ArtisanDialog):
         self.profileTable.setVerticalHeaderItem(i,header)
 
     def renderToolTip(self, profile:RoastProfile) -> str:
-        tooltip:str = ''
+        tooltip:str = f'{Path(profile.filepath).name}\n-\n'
         try:
             if 'roastdate' in profile.metadata:
-                tooltip = profile.metadata['roastdate'].date().toString()
+                tooltip += profile.metadata['roastdate'].date().toString()
                 tooltip += ', ' + profile.metadata['roastdate'].time().toString()[:-3]
             if 'roastoftheday' in profile.metadata:
                 if tooltip != '':
@@ -1500,6 +1519,8 @@ class roastCompareDlg(ArtisanDialog):
                 tooltip += profile.metadata['beans'].strip()
                 if 'moisture_greens' in profile.metadata:
                     tooltip += f" ({float2float(profile.metadata['moisture_greens'],self.aw.percent_decimals):g}%)"
+            if tooltip != '':
+                tooltip += '\n'
             if 'ambientTemp' in profile.metadata:
                 if tooltip != '':
                     tooltip += '\n'
@@ -1556,33 +1577,33 @@ class roastCompareDlg(ArtisanDialog):
             vheader: QHeaderView|None = self.profileTable.verticalHeader()
             if vheader is not None:
                 vheader.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
-            self.profileTable.setHorizontalHeaderLabels(['',
-                                                         QApplication.translate('Label','ON'),
-                                                         QApplication.translate('Label','Title')])
-            hheader: QHeaderView|None = self.profileTable.horizontalHeader()
-            if hheader is not None:
-                hheader.sectionClicked.connect(self.columnHeaderClicked)
-            self.profileTable.setCornerButtonEnabled(True) # click in the left header corner selects all entries in the table
-            self.profileTable.setSortingEnabled(False)
-
-            vheader = self.profileTable.verticalHeader()
-            if vheader is not None:
                 vheader.setSectionsMovable(True)
                 vheader.setDragDropMode(QTableWidget.DragDropMode.InternalMove)
                 vheader.sectionMoved.connect(self.sectionMoved)
                 vheader.sectionDoubleClicked.connect(self.tableSectionClicked)
+                vheader.setStyleSheet(vertical_header_style(self.aw.app.darkmode))
+                vheader.setDefaultAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
+
+
+            self.profileTable.setHorizontalHeaderLabels(['',
+                                                         QApplication.translate('Label','ON'),
+                                                         QApplication.translate('Label','Title')])
+            self.profileTable.setCornerButtonEnabled(True) # click in the left header corner selects all entries in the table
+            self.profileTable.setSortingEnabled(False)
 
             self.profileTable.itemSelectionChanged.connect(self.selectionChanged)
             self.profileTable.deleteKeyPressed.connect(self.deleteSelected)
 
             header: QHeaderView|None = self.profileTable.horizontalHeader()
             if header is not None:
+                header.sectionClicked.connect(self.columnHeaderClicked)
                 header.setStretchLastSection(True)
                 header.setMinimumSectionSize(10)  # color column size
 #                header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
                 header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
                 header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
                 header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+                header.setStyleSheet(horizontal_header_style(self.aw.app.darkmode))
 
             self.profileTable.setColumnWidth(0,10) # color column size
             self.profileTable.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -2034,21 +2055,24 @@ class roastCompareDlg(ArtisanDialog):
                 if firstChar == '{':
                     f.close()
                     obj = deserialize(filename)
+                    profile_data = self.aw.validateProfileDict(obj, validate_signature=True, quiet=False)
                     self.aw.plusAddPath(obj, filename)
-                    self.addProfile(filename,cast('ProfileData', obj))
+                    self.addProfile(filename,profile_data)
         except Exception as ex: # pylint: disable=broad-except
+            self.aw.sendmessage(f"{QApplication.translate('Message','Invalid artisan format')}: {filename}")
             _log.exception(ex)
 
     def addProfiles(self, filenames:list[str]) -> None:
         if len(filenames) > 0:
             for filename in filenames:
                 self.addProfileFromFile(filename)
-            self.updateMenus()
-            self.realign()
-            self.updateZorders()
-            self.redrawOnDeltaAxisVisibilityChanged()
-            if self.aw.qpc is not None:
-                self.aw.qpc.update_phases(self.getPhasesData())
+            if len(self.profiles)>0:
+                self.updateMenus()
+                self.realign()
+                self.updateZorders()
+                self.redrawOnDeltaAxisVisibilityChanged()
+                if self.aw.qpc is not None:
+                    self.aw.qpc.update_phases(self.getPhasesData())
 
     def deleteProfile(self, i:int) -> None:
         self.profileTable.removeRow(i)
@@ -2084,17 +2108,17 @@ class roastCompareDlg(ArtisanDialog):
         for p in reversed(profiles):
             if p.visible:
                 start_idx = p.timeindex[0] if p.timeindex[0] != -1 else 0
-                start:float = p.timex[start_idx]
-                total:float = p.timex[p.timeindex[6]] - start if p.timeindex[6] != 0 else p.timex[-1]
-                dry:float = p.timex[p.timeindex[1]] - start if p.timeindex[1] != 0 else 0
-                fcs:float = p.timex[p.timeindex[2]] - start if p.timeindex[2] != 0 else 0
+                start:float = (p.timex[start_idx] if len(p.timex)>start_idx else 0)
+                total:float = (p.timex[p.timeindex[6]] - start if p.timeindex[6] != 0 else p.timex[-1] if len(p.timex) > p.timeindex[6] else 0)
+                dry:float = p.timex[p.timeindex[1]] - start if len(p.timex) > p.timeindex[1] > 0 else 0
+                fcs:float = p.timex[p.timeindex[2]] - start if len(p.timex) > p.timeindex[2] > 0 else 0
                 p1:float = dry
                 p3:float = total - fcs if fcs != 0 else 0
                 p2:float = total - p1 - p3 if p1 != 0 and p3 != 0 else 0
                 c:QColor = QColor.fromRgbF(*p.color)
-                t1:float = p.temp2[p.timeindex[1]] if p.timeindex[1] != 0 and len(p.temp2) > p.timeindex[1] else -1
-                t2:float = p.temp2[p.timeindex[2]] if p.timeindex[2] != 0 and len(p.temp2) > p.timeindex[2] else -1
-                t3:float = p.temp2[p.timeindex[6]] if p.timeindex[6] != 0 and len(p.temp2) > p.timeindex[6] else (p.temp2[-1] if len(p.temp2)>0 else -1)
+                t1:float = p.temp2[p.timeindex[1]] if len(p.temp2) > p.timeindex[1] > 0 else -1
+                t2:float = p.temp2[p.timeindex[2]] if len(p.temp2) > p.timeindex[2] > 0 else -1
+                t3:float = p.temp2[p.timeindex[6]] if len(p.temp2) > p.timeindex[6] > 0 else (p.temp2[-1] if len(p.temp2)>0 else -1)
                 r1:float = -1
                 r2:float = -1
                 r3:float = -1

@@ -1,4 +1,27 @@
 # -*- mode: python -*-
+#
+# ABOUT
+# artisan-linux.spec script for artisan linux builds using pyinstaller
+#
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
+# LICENSE
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
 
 import os
 from PyInstaller.utils.hooks import get_package_paths, collect_submodules
@@ -28,6 +51,46 @@ hiddenimports_list=[
 ] + collect_submodules('dbus_fast')
 
 EXCLUDES = [
+    'tkinter',
+    'mypy',
+    'hypothesis',
+    'tornado',
+    'pkg_resources',
+    'setuptools',
+    'curses',
+    'matplotlib.tests',
+    'numpy.tests',
+    'scipy.tests',
+    'numpy.lib.tests',
+    'numpy.ma.tests',
+    'numpy.matrixlib.tests',
+    'numpy.polynomial.tests',
+    'numpy.random.tests',
+    'numpy.testing.tests',
+    'numpy.typing.tests',
+    'scipy._lib.tests',
+    'scipy.constants.tests',
+    'scipy.datasets.tests',
+    'scipy.fft.tests',
+    'scipy.fftpack.tests',
+    'scipy.integrate._ivp.tests',
+    'scipy.interpolate.tests',
+    'scipy.io._harwell_boeing.tests',
+    'scipy.io.arff.tests',
+    'scipy.io.matlab.tests',
+    'scipy.io.tests',
+    'scipy.linalg.tests',
+    'scipy.ndimage.tests',
+    'scipy.odr.tests',
+    'scipy.optimize.tests',
+    'scipy.signal.tests',
+    'scipy.sparse.linalg._isolve.tests',
+    'scipy.sparse.linalg.tests',
+    'scipy.sparse.tests',
+    'scipy.spatial.tests',
+    'scipy.spatial.transform.tests',
+    'scipy.special.tests',
+    'scipy.stats.tests',
     'PyQt5',
     'PyQt6.Multimedia',
     'PyQt6.Network',
@@ -39,20 +102,20 @@ EXCLUDES = [
     'PyQt6.QtTest',
     'PyQt6.QtTextToSpeech',
 # the following are required by QtWebEngineWidgets and thus by QtWebEngine for the HTML2PDF export
-#    'PyQt6.QtQuick',
-#    'PyQt6.QtQml',
-#    'PyQt6.QtQmlMeta',
-#    'PyQt6.QtQmlModels',
-#    'PyQt6.QtQmlWorkerScript',
-#    'PyQt6.OpenGL',
-#    'PyQt6.QtWebChannel',
-#    'PyQt6.QtPositioning',
-#    'PyQt6.QtWebEngineQuick'
+    'PyQt6.QtQuick',
+    'PyQt6.QtQml',
+    'PyQt6.QtQmlMeta',
+    'PyQt6.QtQmlModels',
+    'PyQt6.QtQmlWorkerScript',
+    'PyQt6.OpenGL',
+    'PyQt6.QtWebChannel',
+    'PyQt6.QtPositioning',
+    'PyQt6.QtWebEngineQuick'
 ]
 
 
 DATA_FILES = [
-    (os.path.join(get_package_paths('PyQt6')[1], 'Qt6/translations/qtwebengine_locales/en-US.pak'), 'PyQt6/Qt6/translations/qtwebengine_locales')
+#    (os.path.join(get_package_paths('PyQt6')[1], 'Qt6/translations/qtwebengine_locales/en-US.pak'), 'PyQt6/Qt6/translations/qtwebengine_locales')
 ]
 
 a = Analysis(['artisan.py'],
@@ -65,6 +128,7 @@ a = Analysis(['artisan.py'],
     hiddenimports=hiddenimports_list,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
+    optimize=2,
     cipher=block_cipher)
 
 

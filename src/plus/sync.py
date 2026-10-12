@@ -1,25 +1,31 @@
 #
 # sync.py
 #
-# Copyright (c) 2023, Paul Holleis, Marko Luther
-# All rights reserved.
-#
-#
 # ABOUT
-# This module connects to the artisan.plus inventory management service
-
-# LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
+# This module connects to the artisan platform
 #
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
+# LICENSE
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
+# AUTHOR
+# Marko Luther
 
 from PyQt6.QtCore import QSemaphore, QTimer, pyqtSlot
 from PyQt6.QtWidgets import QApplication
@@ -134,6 +140,8 @@ def addSync(uuid:str, modified_at:float) -> None:
 # returns None if given uuid is not registered for syncing, otherwise the
 # last modified_at timestamp in EPOC milliseconds
 def getSync(uuid:str) -> float|None:
+    if uuid == '':
+        return None
     import portalocker
     import shelve
     fh:IO[str]
@@ -482,6 +490,11 @@ def applyServerUpdates(data:dict[str, Any]) -> None:
             if dirty:
                 # register new data
                 aw.qmc.weight = (win,wout,wunit)
+
+            if 'end_weight_est' in data and data['end_weight_est'] != aw.qmc.end_weight_est:
+                aw.qmc.end_weight_est = data['end_weight_est']
+                dirty = True
+
             if 'defects_weight' in data and data['defects_weight'] is not None:
                 w = convertWeight(
                     data['defects_weight'],
@@ -727,7 +740,7 @@ def applyServerUpdates(data:dict[str, Any]) -> None:
             aw.qmc.fileDirty()
             aw.sendmessageSignal.emit(
                 QApplication.translate(
-                    'Plus', 'Updated data received from artisan.plus'
+                    'Plus', 'Updated data received from artisan platform'
                 ),
                 True,
                 None,
@@ -784,7 +797,7 @@ def fetchServerUpdate(uuid: str, file:str|None = None, return_data:bool = False)
                 # if file modification date is newer than what is known on the
                 # version from the server via the sync cache
 
-                if file is not None and getSync(uuid) is None:
+                if file is not None and uuid != '' and getSync(uuid) is None:
                     _log.debug(
                         '-> file not in sync cache yet, we need to fetch'
                          ' the servers modification date and add the profile'
@@ -902,7 +915,7 @@ def fetchServerUpdate(uuid: str, file:str|None = None, return_data:bool = False)
 # this function might be called from a thread (eg. via QTimer)
 def getUpdate(uuid: str|None, file: str|None = None) -> None:
     _log.debug('getUpdate(%s,%s)', uuid, file)
-    if uuid is not None and config.app_window is not None:
+    if uuid is not None and uuid != '' and config.app_window is not None:
         aw = config.app_window
         if aw.editgraphdialog is None and controller.is_connected():
             try:

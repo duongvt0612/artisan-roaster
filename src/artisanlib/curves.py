@@ -1,17 +1,27 @@
 #
 # ABOUT
-# Artisan Curves Dialog
-
+# artisan scope curves dialog
+#
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
 # LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
-
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
 # AUTHOR
 # Marko Luther, 2023
 
@@ -329,6 +339,7 @@ class CurvesDlg(ArtisanDialog):
         self.org_foregroundShowFullflag = self.aw.qmc.foregroundShowFullflag
         self.org_LCDdecimalplaces = self.aw.qmc.LCDdecimalplaces
         self.org_percent_decimals = self.aw.percent_decimals
+        self.org_qt_scale_factor = self.aw.qt_scale_factor
 
         #delta ET
         self.DeltaET = QCheckBox()
@@ -427,7 +438,7 @@ class CurvesDlg(ArtisanDialog):
         self.MinMaxLimits.stateChanged.connect(self.changeMinMaxLimits)
         self.MinMaxLimits.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         #swapETBT flag
-        self.swapETBT = QCheckBox(QApplication.translate('Label', 'ET', None) + ' <-> ' + QApplication.translate('Label', 'BT'))
+        self.swapETBT = QCheckBox(QApplication.translate('Label', 'ET') + ' <-> ' + QApplication.translate('Label', 'BT'))
         self.swapETBT.setChecked(self.aw.qmc.swapETBT)
         self.swapETBT.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.swapETBT.stateChanged.connect(self.changeSwapETBT)
@@ -446,8 +457,8 @@ class CurvesDlg(ArtisanDialog):
         self.maxLimit.setValue(int(self.aw.qmc.filterDropOut_tmax))
         #show projection
         self.projectCheck = QCheckBox(QApplication.translate('CheckBox', 'Projection'))
-        self.ETprojectCheck = QCheckBox(f"{QApplication.translate('Label', 'ET', None)} {QApplication.translate('CheckBox', 'Projection')}")
-        self.BTprojectCheck = QCheckBox(f"{QApplication.translate('Label', 'BT', None)} {QApplication.translate('CheckBox', 'Projection')}")
+        self.ETprojectCheck = QCheckBox(f"{QApplication.translate('Label', 'ET')} {QApplication.translate('CheckBox', 'Projection')}")
+        self.BTprojectCheck = QCheckBox(f"{QApplication.translate('Label', 'BT')} {QApplication.translate('CheckBox', 'Projection')}")
         self.projectDeltaCheck = QCheckBox(deltaLabelUTF8 + QApplication.translate('CheckBox', 'Projection'))
         self.projectionmodeComboBox = QComboBox()
         self.projectionmodeComboBox.addItems([QApplication.translate('ComboBox','linear'),
@@ -729,7 +740,9 @@ class CurvesDlg(ArtisanDialog):
                                       'Source Han Sans JP',
                                       'Dijkstra',
                                       'xkcd Script',
-                                      'Comic Neue'])
+                                      'Comic Neue',
+                                      'Nunito',
+                                      'Noto Sans Mono'])
         self.GraphFont.setCurrentIndex(self.aw.qmc.graphfont)
         self.GraphFont.currentIndexChanged.connect(self.changeGraphFont)
         graphLayout = QHBoxLayout()
@@ -1219,6 +1232,15 @@ class CurvesDlg(ArtisanDialog):
         self.soundCheck.setChecked(bool(self.aw.soundflag))
         self.soundCheck.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.soundCheck.stateChanged.connect(self.soundset) #toggle
+        scaleFactorLabel = QLabel(QApplication.translate('Label','Scale Factor'))
+        scaleFactorLabel.setToolTip(QApplication.translate('Tooltip','User interface scaling factor'))
+        self.scalefactorSpinBox = MyQDoubleSpinBox()
+        self.scalefactorSpinBox.setToolTip(QApplication.translate('Tooltip','User interface scaling factor'))
+        self.scalefactorSpinBox.setDecimals(2)
+        self.scalefactorSpinBox.setSingleStep(0.05)
+        self.scalefactorSpinBox.setRange(0.8,1.4)
+        self.scalefactorSpinBox.setValue(self.aw.qt_scale_factor)
+        self.scalefactorSpinBox.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.glowCheck = QCheckBox(QApplication.translate('CheckBox', 'Glow'))
         self.glowCheck.setChecked(bool(self.aw.qmc.glow))
         self.glowCheck.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -1231,6 +1253,8 @@ class CurvesDlg(ArtisanDialog):
         notifyLayout.addSpacing(15)
         notifyLayout.addWidget(self.soundCheck)
         notifyLayout.addStretch()
+        notifyLayout.addWidget(scaleFactorLabel)
+        notifyLayout.addWidget(self.scalefactorSpinBox)
         appLayout1 = QHBoxLayout()
         appLayout1.addLayout(pathEffectsLayout)
         appLayout1.addStretch()
@@ -1580,8 +1604,8 @@ class CurvesDlg(ArtisanDialog):
         if self.aw.BTname == '':
             self.aw.BTname = QApplication.translate('Label', 'BT')
         BTname_subst = self.aw.qmc.device_name_subst(self.aw.BTname)
-        self.aw.label3.setText(f'<big><b>{BTname_subst}</b></big>')
-        self.aw.label5.setText(f'{deltaLabelBigPrefix}{BTname_subst}</b></big>')
+        self.aw.label3.setText(self.aw.lcd_label_fmt.format(BTname_subst))
+        self.aw.label5.setText(f'{deltaLabelBigPrefix}{self.aw.lcd_label_fmt.format(BTname_subst)}')
 
     @pyqtSlot()
     def renameET(self) -> None:
@@ -1589,8 +1613,8 @@ class CurvesDlg(ArtisanDialog):
         if self.aw.ETname == '':
             self.aw.ETname = QApplication.translate('Label', 'ET')
         ETname_subst = self.aw.qmc.device_name_subst(self.aw.ETname)
-        self.aw.label2.setText(f'<big><b>{ETname_subst}</b></big>')
-        self.aw.label4.setText(f'{deltaLabelBigPrefix}{ETname_subst}</b></big>')
+        self.aw.label2.setText(self.aw.lcd_label_fmt.format(ETname_subst))
+        self.aw.label4.setText(f'{deltaLabelBigPrefix}{self.aw.lcd_label_fmt.format(ETname_subst)}')
 
     @pyqtSlot(int)
     def toggleWebLCDsAlerts(self, _:int) -> None:
@@ -2598,6 +2622,7 @@ class CurvesDlg(ArtisanDialog):
         self.aw.qmc.foregroundShowFullflag = self.org_foregroundShowFullflag
         self.aw.qmc.LCDdecimalplaces = self.org_LCDdecimalplaces
         self.aw.percent_decimals = self.org_percent_decimals
+        self.aw.qt_scale_factor = self.org_qt_scale_factor
 
         self.aw.setFonts(False)
         self.aw.qmc.resetlinecountcaches()
@@ -2674,6 +2699,27 @@ class CurvesDlg(ArtisanDialog):
             self.aw.qmc.redraw(recomputeAllDeltas=True, re_smooth_background=True)
         else:
             self.aw.qmc.redraw_keep_view(recomputeAllDeltas=True, re_smooth_background=True)
+
+        self.aw.qt_scale_factor = self.scalefactorSpinBox.value()
+        if self.aw.qt_scale_factor != self.org_qt_scale_factor:
+            msg:str = QApplication.translate('Tooltip','Scaling factor changed')
+            text:str = QApplication.translate('Tooltip','Restart the app for the change to take effect')
+            # native dialog
+            if platform.system() == 'Darwin':
+                mbox = QMessageBox() # only without super this one shows the native dialog on macOS under Qt 6.6.2
+                # for native dialogs, text and informativetext need to be plain strings, no RTF incl. HTML instructions like <br>
+                mbox.setText(msg)
+                mbox.setInformativeText(text)
+                mbox.setWindowModality(Qt.WindowModality.ApplicationModal) # for native dialog it has to be ApplicationModal
+                mbox.setStandardButtons(QMessageBox.StandardButton.Ok)
+                mbox.setDefaultButton(QMessageBox.StandardButton.Ok)
+                mbox.exec()
+            else:
+                # non-native dialog
+                QMessageBox.warning(None, #self, # only without super this one shows the native dialog on macOS under Qt 6.6.2 and later
+                                msg,text,
+                                QMessageBox.StandardButton.Ok, QMessageBox.StandardButton.Ok)
+
 
 #        self.aw.closeEventSettings()
         self.accept()

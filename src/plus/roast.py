@@ -1,25 +1,31 @@
 #
 # roast.py
 #
-# Copyright (c) 2023, Paul Holleis, Marko Luther
-# All rights reserved.
-#
-#
 # ABOUT
-# This module connects to the artisan.plus inventory management service
-
-# LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
+# This module connects to the artisan platform
 #
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
+# LICENSE
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
+# AUTHOR
+# Marko Luther
 
 from artisanlib.util import weight_units, convertWeight
 from plus import config, util, stock
@@ -60,6 +66,7 @@ def getTemplate(bp: 'ProfileData', background:bool=False) -> dict[str, Any]:
                 gmt_offset = util.limitnum(
                     -60000, 60000, util.getGMToffset()
                 )
+
                 if gmt_offset is not None:
                     d['GMT_offset'] = gmt_offset
         except Exception as e:  # pylint: disable=broad-except
@@ -218,6 +225,7 @@ def getTemplate(bp: 'ProfileData', background:bool=False) -> dict[str, Any]:
                 cp,
                 d,
                 [
+                    ('CHARGE_time', 'charge_time'),
                     'TP_time',
                     'DRY_time',
                     'FCs_time',
@@ -258,16 +266,16 @@ def getTemplate(bp: 'ProfileData', background:bool=False) -> dict[str, Any]:
 # remove all data but for what is to be synced with the server
 def trimBlendSpec(blend_spec:stock.Blend) -> stock.Blend|None:
     try:
-        res:stock.Blend = {} # type: ignore[typeddict-item] # missing required fields (added later)
+        res:stock.Blend = {} # type: ignore[typeddict-item]  # ty:ignore[missing-typed-dict-key] # missing required fields (added later)
         if blend_spec['label']:
             res['label'] = blend_spec['label']
             if blend_spec['ingredients']:
                 res_ingredients:list[stock.BlendIngredient] = []
                 for ingredient in blend_spec['ingredients']:
-                    res_ingredient:stock.BlendIngredient = {} # type: ignore[typeddict-item] # missing required fields (added later)
+                    res_ingredient:stock.BlendIngredient = {} # type: ignore[typeddict-item] # ty:ignore[missing-typed-dict-key] # missing required fields (added later)
                     for tag in ['coffee', 'ratio', 'ratio_num', 'ratio_denom']:
                         if tag in ingredient:
-                            res_ingredient[tag] = ingredient[tag] # type: ignore[literal-required] # field vars like 'tag' are not supported by mypy for TypedDicts
+                            res_ingredient[tag] = ingredient[tag] # type: ignore[literal-required, misc, unused-ignore] # field vars like 'tag' are not supported by mypy for TypedDicts
                     if res_ingredient['coffee'] and res_ingredient['ratio'] > 0:
                         res_ingredients.append(res_ingredient)
                     else:
@@ -289,7 +297,7 @@ def getRoast() -> dict[str, Any]:
         assert config.app_window is not None
         aw = config.app_window
         assert aw is not None
-        p:ProfileData = aw.getProfile()
+        p:ProfileData = aw.getProfile() # calling getProfile with generate_hash=True here generates a non-terminating loop!
 
         d = getTemplate(p)
 
@@ -304,6 +312,10 @@ def getRoast() -> dict[str, Any]:
             del d['start_weight']
         else:
             d['amount'] = 0
+
+        # adds end_weight estimated flag (always, no suppression of the 0)
+        if 'end_weight_est' in p:
+            d['end_weight_est'] = p['end_weight_est']
 
         # computed values added just for the profile, but not for
         # the profiles template
@@ -508,6 +520,7 @@ sync_record_non_supressed_attributes: list[str] = [
     'blend',          # default None
     'amount',         # default 0
     'end_weight',     # default 0
+    'end_weight_est', # default 0 # NOTE: end_weight_est can be toggled for now only on the Artisan side in both directions. Therefore it has to be send always
     'defects_weight', # default 0 # introduced in v3.1.2
     's_item_id',      # default None
 ]

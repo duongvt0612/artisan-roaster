@@ -1,17 +1,27 @@
 #
 # ABOUT
-# Artisan Dialogs
-
+# artisan scope dialogs
+#
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
 # LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
-
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
 # AUTHOR
 # Marko Luther, 2023
 
@@ -20,12 +30,13 @@ import logging
 import re
 
 from PyQt6.QtCore import Qt, QEvent, QSettings, pyqtSlot, pyqtSignal, QRegularExpression
-from PyQt6.QtWidgets import (QApplication, QWidget, QDialog, QMessageBox, QDialogButtonBox, QTextEdit,
+from PyQt6.QtWidgets import (QApplication, QWidget, QDialog, QMessageBox, QDialogButtonBox,
             QHBoxLayout, QVBoxLayout, QLabel, QLineEdit, QLayout, QTableWidget, QHeaderView, QPushButton, QSpinBox, QCheckBox)
 from PyQt6.QtGui import QKeySequence, QAction, QIntValidator, QTextCharFormat, QTextCursor, QColor
 
-from artisanlib.widgets import MyQComboBox, ClickableQLineEdit
+from artisanlib.widgets import MyQComboBox, ClickableQLineEdit, ArtisanTextEdit
 from artisanlib.util import comma2dot, float2float, float2floatWeightVolume, convertWeight, weight_units
+from artisanlib.table_style import horizontal_header_style, vertical_header_style
 
 from collections.abc import Callable
 from typing import override, Final, cast, TYPE_CHECKING
@@ -41,6 +52,7 @@ class ArtisanDialog(QDialog):
     __slots__ = ['aw', 'dialogbuttons']
 
     def __init__(self, parent:QWidget|None, aw:'ApplicationWindow') -> None:
+
         super().__init__(parent)
         self.aw = aw # the Artisan application window
 
@@ -49,6 +61,7 @@ class ArtisanDialog(QDialog):
         # want to use a dialog.deleteLater() call to explicitly have the dialog and its widgets GCe
         # or rather use sip.delete(dialog) if the GC via .deleteLater() is prevented by a link to a parent object (parent not None)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+
 
 #        if platf == 'Windows':
 # setting those Windows flags could be the reason for some instabilities on Windows
@@ -173,7 +186,7 @@ class HelpDlg(ArtisanDialog):
             self.restoreGeometry(settings.value('HelpGeometry'))
 
         # Load the help content
-        self.phelp = QTextEdit()
+        self.phelp = ArtisanTextEdit()
         self.phelp.setHtml(content)
         self.phelp.setReadOnly(True)
 
@@ -199,7 +212,7 @@ class HelpDlg(ArtisanDialog):
 
         # Build the dialog layout
         homeLabel = QLabel()
-        homeLabel.setText(f"{QApplication.translate('Label', 'For more details visit')} <a href='https://artisan-scope.org/help/'>artisan-scope.org/help/</a>")
+        homeLabel.setText(f"{QApplication.translate('Label', 'For more details visit')} <a href='https://artisan-scope.org/help/'>artisan-scope.org/docs/</a>")
         homeLabel.setOpenExternalLinks(True)
         buttonLayout = QHBoxLayout()
         buttonLayout.addWidget(homeLabel)
@@ -304,7 +317,7 @@ class HelpDlg(ArtisanDialog):
         if self.matches:
             # Highlight all matches, the current match in current_match_highlight and all others in extra_matches_highlight
             for i, matchCursor in enumerate(self.matches):
-                selection = QTextEdit.ExtraSelection()
+                selection = self.phelp.ExtraSelection()
                 selection.cursor = matchCursor  # pyrefly: ignore[bad-assignment]
                 fmt:QTextCharFormat = QTextCharFormat()
                 fmt.setForeground(QColor(match_text))
@@ -749,6 +762,8 @@ class tareDlg(ArtisanDialog):
         vheader: QHeaderView|None = self.taretable.verticalHeader()
         if vheader is not None:
             vheader.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+            vheader.setStyleSheet(vertical_header_style(self.aw.app.darkmode))
+            vheader.setDefaultAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
         for i, cn in enumerate(self.aw.qmc.container_names):
             #add widgets to the table
             self.setTableRow(i, cn, self.aw.qmc.container_weights[i])
@@ -757,6 +772,8 @@ class tareDlg(ArtisanDialog):
         if header is not None:
             header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
             header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+            header.setStyleSheet(horizontal_header_style(self.aw.app.darkmode))
+
         self.taretable.setColumnWidth(1,80)
 
 class DesignerSplineNodesDlg(ArtisanDialog):

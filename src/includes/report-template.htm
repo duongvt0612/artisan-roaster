@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
+<meta http-equiv="content-type" content="text/html; charset=utf-8">
 <title>$title</title>
 <meta name="description" content="Artisan roast report">
 <meta name="author" content="Artisan Roaster Scope">
@@ -124,8 +124,6 @@ th {
 <th>$weightin<br><small>($unit)</small></th>
 <th>$weightout<br><small>($unit)</small></th>
 <th>$loss<br><small>(%)</small></th>
-<th>$defects<br><small>($unit)</small></th>
-<th>$defectsloss<br><small>(%)</small></th>
 </tr>
 </thead>
 <tbody>
@@ -140,8 +138,6 @@ $entries
 <td class="inv">${total_in}</td>
 <td class="inv">${total_out}</td>
 <td class="inv">${total_loss}</td>
-<td class="inv">${total_defects}</td>
-<td class="inv">${total_defectsloss}</td>
 </tr>
 </tfoot>
 </table>

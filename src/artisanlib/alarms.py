@@ -1,17 +1,27 @@
 #
 # ABOUT
-# Artisan Alarms Dialog
+# artisan alarms dialog
 
+# COPYRIGHT (C) 2010-2026 The srtisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
 # LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
-
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
 # AUTHOR
 # Marko Luther, 2023
 
@@ -34,6 +44,7 @@ from artisanlib.util import deltaLabelUTF8, comma2dot, float2float, deserialize
 from artisanlib.dialogs import ArtisanResizeablDialog
 from artisanlib.widgets import (MyQComboBox, MyTableWidgetItemNumber, MyTableWidgetItemQCheckBox,
                                 MyTableWidgetItemQComboBox, MyTableWidgetItemQLineEdit, MyTableWidgetItemQTime)
+from artisanlib.table_style import horizontal_header_style
 
 
 from PyQt6.QtCore import (Qt, pyqtSlot, QSettings, QTimer)
@@ -69,6 +80,9 @@ class AlarmDlg(ArtisanResizeablDialog):
 
         #table for alarms
         self.alarmtable = QTableWidget()
+        horizontal_header = self.alarmtable.horizontalHeader()
+        if horizontal_header is not None:
+            horizontal_header.setStyleSheet(horizontal_header_style(self.aw.app.darkmode))
         self.alarmtable.itemSelectionChanged.connect(self.selectionChanged)
         allonButton = QPushButton(QApplication.translate('Button','All On'))
         allonButton.clicked.connect(self.alarmsAllOn)
@@ -319,8 +333,8 @@ class AlarmDlg(ArtisanResizeablDialog):
             self.createalarmtable()
         elif i == 1:
             # Alarm Sets
-            # save column widths
-            self.aw.qmc.alarmtablecolumnwidths = [self.alarmtable.columnWidth(c) for c in range(self.alarmtable.columnCount())]
+            # create the table
+            self.createalarmtable()
             # establish alarm table
             self.savealarms()
             # we update the current alarmset label
@@ -633,7 +647,7 @@ class AlarmDlg(ArtisanResizeablDialog):
     def importalarms(self, _:bool = False) -> None:
         self.aw.fileImport(QApplication.translate('Message', 'Load Alarms'),self.importalarmsJSON,ext='*.alrm *.alog')
 
-    def importalarmsJSON(self, filename:str) -> None:
+    def importalarmsJSON(self, filename:str) -> bool:
         try:
             _,ext = os.path.splitext(filename)
             if ext == '.alrm':
@@ -662,7 +676,8 @@ class AlarmDlg(ArtisanResizeablDialog):
             elif ext == '.alog':
                 obj = deserialize(filename)
                 self.aw.plusAddPath(obj, filename)
-                self.aw.loadAlarmsFromProfile(filename, cast('ProfileData', obj))
+                profile:ProfileData = self.aw.validateProfileDict(obj)
+                self.aw.loadAlarmsFromProfile(filename, profile)
                 self.alarmsfile.setText(self.aw.qmc.alarmsfile)
             self.aw.qmc.alarmstate = [-1]*len(self.aw.qmc.alarmflag)
             aitems = self.buildAlarmSourceList()
@@ -670,11 +685,13 @@ class AlarmDlg(ArtisanResizeablDialog):
                 if self.aw.qmc.alarmsource[i] + 3 >= len(aitems):
                     self.aw.qmc.alarmsource[i] = 1 # BT
             self.createalarmtable()
+            return True
         except Exception as ex: # pylint: disable=broad-except
             _log.exception(ex)
             _, _, exc_tb = sys.exc_info()
             self.aw.sendmessage(QApplication.translate('Message','Error loading alarm file'))
             self.aw.qmc.adderror((QApplication.translate('Error Message','Exception:') + ' importalarmsJSON() {0}').format(str(ex)),getattr(exc_tb, 'tb_lineno', '?'))
+        return False
 
     @pyqtSlot(bool)
     def exportalarms(self, _:bool = False) -> None:
@@ -919,7 +936,10 @@ class AlarmDlg(ArtisanResizeablDialog):
                                  QApplication.translate('ComboBox','Playback OFF'),
                                  QApplication.translate('ComboBox','Set Canvas Color'),
                                  QApplication.translate('ComboBox','Reset Canvas Color')])
-        actionComboBox.setCurrentIndex(self.aw.qmc.alarmaction[i] + 1)
+        try:
+            actionComboBox.setCurrentIndex(self.aw.qmc.alarmaction[i] + 1)
+        except Exception: # pylint: disable=broad-except
+            pass
         #10: beep
         beepWidget = QWidget()
         beepCheckBox = QCheckBox()

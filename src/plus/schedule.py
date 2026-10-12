@@ -1,25 +1,31 @@
 #
 # schedule.py
 #
-# Copyright (c) 2025, Paul Holleis, Marko Luther
-# All rights reserved.
-#
-#
 # ABOUT
-# This module connects to the artisan.plus inventory management service
-
-# LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. Seef
-# the GNU General Public License for more details.
+# This module connects to the artisan platform
 #
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
+# LICENSE
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
+# AUTHOR
+# Marko Luther
 
 import os
 import time
@@ -40,7 +46,7 @@ from PyQt6.QtCore import (Qt, QMimeData, QSettings, pyqtSlot, pyqtSignal, QPoint
 from PyQt6.QtGui import (QDrag, QPixmap, QPainter, QTextLayout, QTextLine, QColor, QFontMetrics, QCursor, QAction, QIcon)
 from PyQt6.QtWidgets import (QDialogButtonBox, QMessageBox, QStackedWidget, QApplication, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QTabWidget,
         QCheckBox, QGroupBox, QScrollArea, QLabel, QSizePolicy,
-        QGraphicsDropShadowEffect, QPlainTextEdit, QLineEdit, QMenu, QStatusBar, QToolButton)
+        QGraphicsDropShadowEffect, QLineEdit, QMenu, QStatusBar, QToolButton)
 
 
 from babel.dates import format_date, format_timedelta
@@ -66,7 +72,7 @@ import plus.sync
 import plus.util
 from plus.util import datetime2epoch, epoch2datetime, schedulerLink, epoch2ISO8601, ISO86012epoch, plusLink
 from plus.weight import Display, GreenDisplay, RoastedDisplay, PROCESS_STATE, WeightManager, GreenWeightItem, RoastedWeightItem
-from artisanlib.widgets import ClickableQLabel, ClickableQLineEdit, Splitter
+from artisanlib.widgets import ClickableQLabel, ClickableQLineEdit, Splitter, ArtisanPlainTextEdit
 from artisanlib.dialogs import ArtisanResizeablDialog
 from artisanlib.util import (float2float, float2str, convertWeight, weight_units, render_weight, comma2dot, float2floatWeightVolume, getDirectory,
     getResourcePath, deserialize, roast_time, get_total_roast_time_from_profile, stringfromseconds)
@@ -131,7 +137,7 @@ plus_blue_hover: Final[str] = '#1985ba'
 plus_blue: Final[str] = '#147BB3'
 ## for selected schedule item:
 plus_alt_blue_hover: Final[str] = '#3d81ba'
-plus_alt_blue: Final[str] = '#3979ae' # main.py:dark_blue
+plus_alt_blue: Final[str] = '#3979ae'
 #
 white: Final[str] = 'white'
 dull_white: Final[str] = '#FDFDFD'
@@ -222,14 +228,14 @@ class ScheduledItem(BaseModel):
     coffee: str|None = Field(default=None)      # None or coffee hr_id
     blend: str|None = Field(default=None)       # None or blend hr_id
     store: str = Field(..., alias='location')
-    weight: float = Field(..., alias='amount')       # batch size in kg
-    loss: float = default_loss                       # default loss based calculated by magic on the server in % (if not given defaults to 15%)
+    weight: float = Field(..., alias='amount')  # batch size in kg
+    loss: float = default_loss                  # default loss based calculated by magic on the server in % (if not given defaults to 15%)
     machine: str|None = Field(default=None)
     user: str|None = Field(default=None)
     nickname: str|None = Field(default=None)
     template: UUID4|None = Field(default=None)  # note that this generates UUID objects. To get a UUID string without dashes use uuid.hex.
     note: str|None = Field(default=None)
-    roasts: set[UUID4] = Field(default=set())        # note that this generates UUID objects. To get a UUID string without dashes use uuid.hex.
+    roasts: set[UUID4] = Field(default=set())   # note that this generates UUID objects. To get a UUID string without dashes use uuid.hex.
 
     @field_validator('*', mode='before')
     def remove_blank_strings(cls: BaseModel, v: str|None) -> str|None:   # pylint: disable=no-self-argument,no-self-use
@@ -278,7 +284,7 @@ class CompletedItem(BaseModel):
     cuppingnotes: str = Field(default='')
     roasttime: int = Field(default=0)
 
-    @computed_field  # type:ignore[prop-decorator] # ty:ignore[unused] # Decorators on top of @property are not supported
+    @computed_field  # type:ignore[prop-decorator] # Decorators on top of @property are not supported
     @property
     def prefix(self) -> str:
         res = ''
@@ -289,7 +295,8 @@ class CompletedItem(BaseModel):
     @model_validator(mode='after') # pyright:ignore[reportArgumentType]
     def coffee_or_blend(self) -> 'CompletedItem':
         if len(self.title) == 0:
-            raise ValueError('Title cannot be empty')
+#            raise ValueError('Title cannot be empty')
+            self.title = 'ROAST'
 # as CompletedItems are generated for ScheduledItems where store and one of blend/coffee needs to be set
 # the store_label and one of the blend_label/coffee_label should never be empty, but in case they are we
 # handle this without further ado
@@ -307,11 +314,11 @@ class CompletedItem(BaseModel):
         return self
 
     @field_serializer('roastdate', when_used='json')
-    def serialize_roastdate_to_epoch(roastdate: datetime.datetime) -> int: # type:ignore[misc] # ty:ignore[unused] # pylint: disable=no-self-argument
+    def serialize_roastdate_to_epoch(roastdate: datetime.datetime) -> int: # type:ignore[misc] # pylint: disable=no-self-argument
         return int(roastdate.timestamp())
 
     @field_serializer('roastUUID', when_used='json')
-    def serialize_roastUUID_to_str(roastUUID: UUID4) -> str: # type:ignore[misc] # ty:ignore[unused] # pylint: disable=no-self-argument
+    def serialize_roastUUID_to_str(roastUUID: UUID4) -> str: # type:ignore[misc] # pylint: disable=no-self-argument
         return str(roastUUID.hex)
 
 
@@ -359,6 +366,12 @@ class CompletedItem(BaseModel):
             if end_weight != self.weight:
                 updated = True
                 self.weight = end_weight
+        if 'end_weight_est' in profile_data and int(profile_data['end_weight_est'])>0 and self.measured:
+            self.measured = False
+            updated = True
+        elif ('end_weight_est' not in profile_data or int(profile_data['end_weight_est']) == 0) and not self.measured:
+            self.measured = True
+            updated = True
         if 'defects_weight' in profile_data:
             defects_weight = float(profile_data['defects_weight'])
             if defects_weight != self.defects_weight:
@@ -413,13 +426,17 @@ class CompletedItem(BaseModel):
 def get_total_roasting_time_and_title(uuid:str) -> tuple[float|None, str|None]:
     filepath = plus.register.getPath(uuid)
     if filepath is not None:
-        template:ProfileData = cast('ProfileData', deserialize(filepath))
-        roast_title:str|None = template.get('title', None)
-        if roast_title is not None:
-            batchnr = template.get('roastbatchnr', 0)
-            if batchnr > 0:
-                roast_title = f"{template.get('roastbatchprefix', '')}{batchnr} {roast_title}"
-        return get_total_roast_time_from_profile(template), roast_title
+        try:
+            template:ProfileData = cast('ProfileData', deserialize(filepath))
+            roast_title:str|None = template.get('title', None)
+            if roast_title is not None:
+                batchnr = template.get('roastbatchnr', 0)
+                if batchnr > 0:
+                    roast_title = f"{template.get('roastbatchprefix', '')}{batchnr} {roast_title}"
+            return get_total_roast_time_from_profile(template), roast_title
+        except Exception: # pylint: disable=broad-except
+            # profile could be broken!
+            pass
     return None, None
 
 
@@ -1353,8 +1370,8 @@ class NoDragItem(StandardItem):
             _log.exception(e)
             return ''
 
-    def select(self) -> None:
-        if self.aw.schedule_window is not None and not self.aw.schedule_window.being_updated:
+    def select(self, force:bool = False) -> None:
+        if self.aw.schedule_window is not None and (force or not self.aw.schedule_window.being_updated):
             self.setProperty('Selected', True)
             self.setStyleSheet(self.styleSheet())
 
@@ -1653,7 +1670,7 @@ class DragItem(StandardItem):
         if self.data.template is not None and aw.curFile is None and aw.qmc.timeindex[6] == 0:
             # if template is set and no profile is loaded and DROP is not set we load the template
             uuid:str = self.data.template.hex
-            QTimer.singleShot(500, lambda : aw.loadAndRedrawBackgroundUUID(UUID = uuid, force_reload=False))
+            QTimer.singleShot(500, lambda : aw.loadAndRedrawBackgroundUUID(UUID = uuid, force_reload=False, verbose=True))
 
 
     def deselect(self) -> None:
@@ -2050,7 +2067,8 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
         self.roasted_weight.setValidator(self.aw.createCLocaleDoubleValidator(0., 9999999., 4, self.roasted_weight, ''))
         self.roasted_weight.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
         self.roasted_weight.editingFinished.connect(self.roasted_weight_changed)
-        self.roasted_weight.receivedFocus.connect(self.roasted_weight_selected)
+#        self.roasted_weight.receivedFocus.connect(self.roasted_weight_selected) # issued on raising the app/dialog the front which is disturbing the estimate state thus replaced by the click handler below
+        self.roasted_weight.clicked.connect(self.roasted_weight_selected)  # needs a right-click!
         self.roasted_weight_suffix = ClickableQLabel(weight_unit_str)
 
         # calculate unit label max_width
@@ -2117,19 +2135,19 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
         roasted_moisture_suffix.setFixedWidth(color_density_moisture_suffix_width)
         roasted_moisture_suffix.setAlignment (Qt.AlignmentFlag.AlignLeft)
 
-        self.roasted_notes = QPlainTextEdit()
+        self.roasted_notes = ArtisanPlainTextEdit()
         self.roasted_notes.setPlaceholderText(QApplication.translate('Label', 'Roasting Notes'))
         self.roasted_notes.setToolTip(QApplication.translate('Label', 'Roasting Notes'))
 
         self.cupping_score = QLineEdit()
-        self.cupping_score.setFixedWidth(42)
+        self.cupping_score.setFixedWidth(60)
         self.cupping_score.setPlaceholderText(QApplication.translate('Label', 'Score'))
         self.cupping_score.setToolTip(QApplication.translate('Label','Cupping Score'))
         self.cupping_score.setValidator(self.aw.createCLocaleDoubleValidator(0., 100., 2, self.cupping_score))
         self.cupping_score.setAlignment(Qt.AlignmentFlag.AlignCenter) #Qt.AlignmentFlag.AlignHCenter|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
         self.cupping_score.editingFinished.connect(self.cupping_score_changed)
 
-        self.cupping_notes = QPlainTextEdit()
+        self.cupping_notes = ArtisanPlainTextEdit()
         self.cupping_notes.setPlaceholderText(QApplication.translate('Label', 'Cupping Notes'))
         self.cupping_notes.setToolTip(QApplication.translate('Label', 'Cupping Notes'))
 
@@ -2180,6 +2198,7 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
         lines:int = 2
         docMargin:float = 0
         lineSpacing:float = 1.5
+        padding:float = 1.0
 
         roasted_notes_doc:QTextDocument|None = self.roasted_notes.document()
         if roasted_notes_doc is not None:
@@ -2189,7 +2208,7 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
             lineSpacing = fontMetrics.lineSpacing()
         margins:QMargins = self.roasted_notes.contentsMargins()
         notes_hight:int = math.ceil(lineSpacing * lines +
-            (docMargin + self.roasted_notes.frameWidth()) * 2 + margins.top() + margins.bottom())
+            (docMargin + self.roasted_notes.frameWidth()) * 2 + margins.top() + margins.bottom() + 2* padding)
         self.roasted_notes.setFixedHeight(notes_hight)
         self.roasted_notes.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.roasted_notes.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -2203,7 +2222,7 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
             lineSpacing = fontMetrics.lineSpacing()
         margins = self.cupping_notes.contentsMargins()
         cupping_notes_hight:int = math.ceil(lineSpacing * lines +
-            (docMargin + self.cupping_notes.frameWidth()) * 2 + margins.top() + margins.bottom())
+            (docMargin + self.cupping_notes.frameWidth()) * 2 + margins.top() + margins.bottom() + 2* padding)
         self.cupping_notes.setFixedHeight(cupping_notes_hight)
         self.cupping_notes.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.cupping_notes.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -2227,7 +2246,7 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
         self.completed_details_scrollarea.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.completed_details_scrollarea.setWidgetResizable(True)
         self.completed_details_scrollarea.setWidget(self.completed_details_group)
-        self.completed_details_scrollarea.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        self.completed_details_scrollarea.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum) # horizontal/vertical
 
         completed_details_layout2 =  QVBoxLayout()
         completed_details_layout2.addSpacing(1) # ensures a minimum height to keep the handle movable
@@ -2386,7 +2405,7 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
 
         disconnected_widget = QLabel()
         disconnected_widget.setTextFormat(Qt.TextFormat.RichText)
-        disconnected_widget.setText(QApplication.translate('Plus', 'Login to {} to receive your roast schedule').format(f'<a href="{plusLink()}">{plus.config.app_name}</a>'))
+        disconnected_widget.setText(QApplication.translate('Plus', 'Login to {} to receive your roast schedule').format(f'<a href="{plusLink()}">artisan platform</a>'))
         disconnected_widget.setWordWrap(True)
         disconnected_widget.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
         disconnected_widget.linkActivated.connect(self.disconnected_link_handler)
@@ -2613,7 +2632,6 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
         text:str = self.roasted_weight.text()
         if self.selected_completed_item is not None:
             if text == '':
-                self.selected_completed_item.data.measured = False
                 self.roasted_weight_suffix.setEnabled(False)
                 self.roasted_yield.setText('')
                 self.roasted_defects.setText('0')
@@ -2625,13 +2643,11 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
                     converted_weight = convertWeight(roasted_weight, 0, weight_units.index(self.aw.qmc.weight[2]))
                     roasted_weight_txt = f'{float2floatWeightVolume(converted_weight):g}'
                 self.roasted_weight.setText(roasted_weight_txt)
-                self.selected_completed_item.data.measured = True
                 self.roasted_weight_suffix.setEnabled(True)
 
     @pyqtSlot()
     def roasted_measured_toggle(self) -> None:
         if self.selected_completed_item is not None:
-            self.selected_completed_item.data.measured = False
             self.roasted_weight.setText('')
             self.roasted_weight_suffix.setEnabled(False)
             self.roasted_yield.setText('')
@@ -2862,6 +2878,7 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
             self.aw.qmc.scheduleID = None
             self.aw.qmc.scheduleDate = None
         self.aw.sendmessage(QApplication.translate('Message','Scheduler stopped'))
+        self.aw.disconnectPlusSignal.disconnect(self.updateScheduleWindow)
         self.accept()
 
     # returns True if the (visible filtered) schedule changed significantly by the updated new_schedule vs the previous old_schedule such that the
@@ -3042,10 +3059,10 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
                     blend:plus.stock.Blend = plus.stock.getBlendBlendDict(blend_structure, schedule_item_weight)
                     self.aw.qmc.plus_blend_label = blend['label']
                     self.aw.qmc.plus_blend_spec = cast(plus.stock.Blend, dict(blend)) # make a copy of the blend dict
-                    self.aw.qmc.plus_blend_spec_labels = [i.get('label','') for i in self.aw.qmc.plus_blend_spec['ingredients']] # ty:ignore[not-subscriptable]
+                    self.aw.qmc.plus_blend_spec_labels = [i.get('label','') for i in self.aw.qmc.plus_blend_spec['ingredients']]
                     # remove labels from ingredients
                     ingredients = []
-                    for i in self.aw.qmc.plus_blend_spec['ingredients']: # ty:ignore[not-subscriptable]
+                    for i in self.aw.qmc.plus_blend_spec['ingredients']:
                         entry = plus.stock.BlendIngredient(ratio = i['ratio'], coffee = i['coffee'])
                         if 'ratio_num' in i:
                             entry['ratio_num'] = i['ratio_num']
@@ -3148,6 +3165,7 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
                 if plus.config.connected:
                     changes:dict[str, Any] = {
                         'end_weight': weight,
+                        'end_weight_est': 0, # the end_weight is NOT and estimate
                         'roast_id': item.roastUUID.hex,
                         'modified_at': epoch2ISO8601(time.time())}
                     r = plus.connection.sendData(plus.config.roast_url, changes, 'POST')
@@ -3158,11 +3176,12 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
                     # if previous selected roast is loaded we write the changes to its roast properties
                     if item.roastUUID.hex == self.aw.qmc.roastUUID:
                         self.updates_roast_properties_from_completed(item)
-                    # we update the completed_roasts_cache entry
-                    completed_item_dict = item.model_dump(mode='json')
-                    if 'prefix' in completed_item_dict:
-                        del completed_item_dict['prefix']
-                    add_completed(self.aw.plus_account_id, cast(CompletedItemDict, completed_item_dict))
+# this add_completed is already done by the above update_completed_item!!
+#                    # we update the completed_roasts_cache entry
+#                    completed_item_dict = item.model_dump(mode='json')
+#                    if 'prefix' in completed_item_dict:
+#                        del completed_item_dict['prefix']
+#                    add_completed(self.aw.plus_account_id, cast(CompletedItemDict, completed_item_dict))
                     self.updateRoastedItems() # updates widgets
             except Exception as e:  # pylint: disable=broad-except
                 # updating data to server failed
@@ -3380,7 +3399,7 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
             self.roasted_weight.setPlaceholderText(converted_estimate_str)
             converted_weight = convertWeight(data.weight, 1, weight_units.index(self.aw.qmc.weight[2]))
             converted_weight_str = f'{float2floatWeightVolume(converted_weight):g}'
-            if not data.measured and converted_weight_str != converted_estimate_str:
+            if not data.measured and data.weight != 0 and converted_weight_str != converted_estimate_str:
                 # weight might have been set on server by another client
                 data.measured = True
                 # we update the completed_roasts_cache entry
@@ -3428,13 +3447,23 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
             converted_data_weight = convertWeight(data.weight, 1, weight_units.index(self.aw.qmc.weight[2]))
             converted_data_weight_str = f'{float2floatWeightVolume(converted_data_weight):g}'
             roasted_weight_text:str = self.roasted_weight.text()
+            roasted_weight_placeholder_text:str = self.roasted_weight.placeholderText()
+            end_weight_estimated:bool = False
             if roasted_weight_text == '':
-                roasted_weight_text = '0'
+                if roasted_weight_placeholder_text == '':
+                    roasted_weight_text = '0'
+                else:
+                    roasted_weight_text = roasted_weight_placeholder_text
+                    end_weight_estimated = True
             if roasted_weight_text != '':
                 roasted_weight_value_str = comma2dot(roasted_weight_text)
                 if converted_data_weight_str != roasted_weight_value_str:
                     # on textual changes, send updated weight
                     changes['end_weight'] = convertWeight(float(roasted_weight_value_str), weight_units.index(self.aw.qmc.weight[2]), 1)
+            if data.measured and end_weight_estimated:
+                changes['end_weight_est'] = 1
+            if not data.measured and not end_weight_estimated:
+                changes['end_weight_est'] = 0
         except Exception:  # pylint: disable=broad-except
             pass
         try:
@@ -3498,6 +3527,7 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
                 weight_units.index(wunit)
             )
             self.aw.qmc.weight = (self.aw.qmc.weight[0], wout, self.aw.qmc.weight[2])
+            self.aw.qmc.end_weight_est = (0 if ci.measured else 1)
             wdefects = convertWeight(
                 ci.defects_weight,
                 weight_units.index('Kg'),
@@ -3522,6 +3552,8 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
             #        blend_label
             #        store_label
             #        batchsize
+            self.aw.qmc.writecharacteristics() # update x-label with new information
+            self.aw.qmc.fig.canvas.draw_idle()
 
 
 
@@ -3590,7 +3622,7 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
                     self.set_next()
                 if sender != self.selected_completed_item:
                     if plus.sync.getSync(sender.data.roastUUID.hex) is None:
-                        _log.info('completed roast %s could not be edited as corresponding sync record is missing', sender.data.roastUUID.hex)
+                        _log.info('completed roast "%s" could not be edited as corresponding sync record is missing', sender.data.roastUUID.hex)
                         # as we cannot edit this entry we mark it as completed by setting the weight_estimate as weight locally, not to block the Batch Manager
                         self.set_roasted_weight(sender.data.roastUUID.hex, sender.data.weight_estimate)
                     else:
@@ -3730,7 +3762,7 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
         # update selected item if any
         self.selected_completed_item = new_selected_completed_item
         if self.selected_completed_item is not None:
-            self.selected_completed_item.select()
+            self.selected_completed_item.select(force=True)
 
         # updates the tabs tooltip
         today:datetime.date = now.astimezone().date() # today in local timezone
@@ -3877,9 +3909,11 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
                     measured = False
                     self.aw.qmc.weight = (self.aw.qmc.weight[0], convertWeight(weight_estimate, 1, weight_unit_idx), self.aw.qmc.weight[2])
                     weight = weight_estimate
+                    self.aw.qmc.end_weight_est = 1
                 else:
                     measured = True
                     weight = convertWeight(self.aw.qmc.weight[1], weight_unit_idx, 1)    # resulting weight converted to kg
+                    self.aw.qmc.end_weight_est = 0
 
                 rt:float|None = roast_time(self.aw.qmc.timeindex, self.aw.qmc.timex)
 
@@ -3986,7 +4020,7 @@ class ScheduleWindow(ArtisanResizeablDialog): # pyright:ignore[reportGeneralType
                             self.aw.qmc.scheduleID = None
                             self.aw.qmc.scheduleDate = None
                         # show empty schedule message
-                        self.remaining_message.setText(QApplication.translate('Plus', 'Schedule empty!{}Plan your schedule on {}').format('<BR><BR>', f'<a href="{schedulerLink()}">{plus.config.app_name}</a><br>'))
+                        self.remaining_message.setText(QApplication.translate('Plus', 'Schedule empty!{}Plan your schedule on {}').format('<BR><BR>', f'<a href="{schedulerLink()}">artisan platform</a><br>'))
                         self.stacked_remaining_widget.setCurrentWidget(self.remaining_message_widget)
                         self.setAppBadge(0)
                     else:

@@ -50,7 +50,7 @@ rm -rf dist/artisan.d
 mkdir dist/translations
 
 
-for lan in ar, da, de, en, el, es, fa, fi, fr, gd, he, hu, id, it, ja, ko, lv, nl, no, pl, pt_BR, pt, ru, sk, sv, th, tr, vi, zh_CN, zh_TW;
+for lan in ar, bg, da, de, en, el, es, fa, fi, fr, gd, he, hu, id, it, ja, ko, lv, nl, no, pl, pt_BR, pt, ru, sk, sv, th, tr, vi, zh_CN, zh_TW;
 do
      QTBASE_FILE=$QT_PATH/translations/qtbase_${lan}.qm
      QT_FILE=$QT_PATH/translations/qt_${lan}.qm
@@ -117,7 +117,8 @@ cp includes/report-template.htm dist
 cp includes/roast-template.htm dist
 cp includes/ranking-template.htm dist
 cp includes/jquery-1.11.1.min.js dist
-cp includes/logging.yaml dist
+cp includes/logging.json dist
+cp includes/artisan_public_key.pem dist
 cp -R icons dist
 cp -R Wheels dist
 cp README.txt dist

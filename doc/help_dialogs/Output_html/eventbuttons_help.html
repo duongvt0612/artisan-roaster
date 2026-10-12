@@ -499,8 +499,18 @@
         </tr>
         <tr>
             <td>&#160;</td>
+            <td>orbiter(&lt;cmd&gt;[,&lt;value&gt;[,&lt;param&gt;]])</td>
+            <td>sends &lt;cmd&gt; (1byte in HEX) and optional &lt;value&gt; (0-65535) and &lt;param&gt; (0-255) to Orbiter</td>
+        </tr>
+        <tr>
+            <td>&#160;</td>
             <td>shellyrelay(n,b)</td>
             <td>switches Shelly plug number &lt;n&gt; ON if b is true or 1, and OFF otherwise</td>
+        </tr>
+        <tr>
+            <td>&#160;</td>
+            <td>publish(&lt;topic&gt;, &lt;value&gt;)</td>
+            <td>converts the given data to JSON and publishes it on the MQTT server to the given topic</td>
         </tr>
         <tr>
             <td>Hottop Heater</td>
@@ -759,6 +769,31 @@
         </tr>
         <tr>
             <td>&#160;</td>
+            <td>pidDerivativeFilter(&lt;n&gt;)</td>
+            <td>sets derivative filter size;  0 &lt;= n &lt; 6 (n:int)</td>
+        </tr>
+        <tr>
+            <td>&#160;</td>
+            <td>pidDerivativeLimit(&lt;n&gt;)</td>
+            <td>sets derivative limit (Dlimit); n &gt;= 0</td>
+        </tr>
+        <tr>
+            <td>&#160;</td>
+            <td>pidILF(&lt;n&gt;)</td>
+            <td>sets integral limit factor; 0&lt;=n&lt;=1 (n:float)</td>
+        </tr>
+        <tr>
+            <td>&#160;</td>
+            <td>pidIWP(&lt;bool&gt;)</td>
+            <td>toggles integral windup prevention</td>
+        </tr>
+        <tr>
+            <td>&#160;</td>
+            <td>pidIRoC(&lt;bool&gt;)</td>
+            <td>toggles integral reset on target</td>
+        </tr>
+        <tr>
+            <td>&#160;</td>
             <td>adjustSV(&lt;float&gt;)</td>
             <td>increases or decreases the current target SV value by &lt;float&gt;</td>
         </tr>
@@ -771,6 +806,11 @@
             <td>&#160;</td>
             <td>pidSVC(&lt;float&gt;)</td>
             <td>sets the PID target set value SV given in C</td>
+        </tr>
+        <tr>
+            <td>&#160;</td>
+            <td>pidSVbuttons(&lt;bool&gt;)</td>
+            <td>toggles the visibility of the PID SV buttons</td>
         </tr>
         <tr>
             <td>&#160;</td>
@@ -936,6 +976,56 @@
             <td>&#160;</td>
             <td>showBackgroundEvents(&lt;bool&gt;)</td>
             <td>shows/hides the events of the background profile</td>
+        </tr>
+        <tr>
+            <td>&#160;</td>
+            <td>upload2RoastHubs</td>
+            <td>upload current loaded profile to RoastHubs</td>
+        </tr>
+        <tr>
+            <td>&#160;</td>
+            <td>zoom(&lt;x&gt;[,&lt;y&gt;])</td>
+            <td>zooms the canvas by factor &lt;x&gt; horizontally and the optional &lt;y&gt; vertically. &lt;y&gt; defaults to &lt;x&gt;.</td>
+        </tr>
+        <tr>
+            <td>&#160;</td>
+            <td>pan(&lt;x&gt;[,&lt;y&gt;])</td>
+            <td>pans the canvas by factor &lt;x&gt; horizontally and the optional &lt;y&gt; vertically. A factor 0 does not apply any panning, a factor 1 moves by one full screen to the left/bottom, a factor -1 by one full screen to the right/top. &lt;y&gt; defaults to &lt;x&gt;.</td>
+        </tr>
+        <tr>
+            <td>&#160;</td>
+            <td>center(&lt;x&gt;,&lt;y&gt;[,&lt;clamp&gt;])</td>
+            <td>centers canvas and then applies panning according to the given x/y parameters in horizontal and vertical direction. 0: no panning, 1: pan canvas one full screen to the left/bottom, -1: pan canvas one full screen to the right/top. If &lt;clamp&gt; is 0 the canvas is centered w.r.t. both axis limits. If not recording, and &lt;clamp&gt; i -1 the canvas is centered only horizontally wr.t. its x-axis limits and with clamp in {1,..,4} w.r.t. to both axis limits. While recording if &lt;clamp&gt; is -1 the canvas is centered horizontally to the current time, if 1 also centered to current BT, 2 current ET, 3 current BT RoR, 4 current ET RoR. &lt;clamp&gt; defaults to -1 if xy-cursor widget is clamped to any temp or RoR curve (z-key), 0 if zoom follow is OFF and xy-cursor not clamped, 1-4 if zoom follow is ON and xy-cursor not clamped, centering on the value zoom followed.</td>
+        </tr>
+        <tr>
+            <td>&#160;</td>
+            <td>clamp(&lt;n&gt;)</td>
+            <td>set xy cursor clamp mode (shortcut key z) to 0: off, 1: BT@x, 2: ET@x, 3: BTB@x, 4: ETB@x</td>
+        </tr>
+        <tr>
+            <td>&#160;</td>
+            <td>followMode(&lt;bool&gt;)</td>
+            <td>enables/disables follow mode</td>
+        </tr>
+        <tr>
+            <td>&#160;</td>
+            <td>followModePanning(&lt;x&gt;[,&lt;y&gt;])</td>
+            <td>sets additional panning in horizontal and vertical direction, applied in follow mode after the centering. 0: no panning, 1: pan canvas one full screen to the left/bottom, -1: pan canvas one full screen to the right/top. &lt;y&gt; defaults to &lt;x&gt;.</td>
+        </tr>
+        <tr>
+            <td>&#160;</td>
+            <td>home</td>
+            <td>toolbar home action</td>
+        </tr>
+        <tr>
+            <td>&#160;</td>
+            <td>back</td>
+            <td>toolbar back action</td>
+        </tr>
+        <tr>
+            <td>&#160;</td>
+            <td>forward</td>
+            <td>toolbar forward action</td>
         </tr>
         <tr>
             <td>RC Command</td>

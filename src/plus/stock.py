@@ -1,25 +1,31 @@
 #
 # stock.py
 #
-# Copyright (c) 2023, Paul Holleis, Marko Luther
-# All rights reserved.
-#
-#
 # ABOUT
-# This module connects to the artisan.plus inventory management service
-
-# LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
+# This module connects to the artisan platform
 #
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
+# LICENSE
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
+# AUTHOR
+# Marko Luther
 
 from PyQt6.QtCore import QSemaphore, QObject, QThread, pyqtSlot, pyqtSignal
 from PyQt6.QtWidgets import QApplication
@@ -1133,7 +1139,7 @@ def blend2weight_beans(blend:BlendStructure, weight_unit_idx:int, weightIn:float
             c = getBlendCoffeeLabelDict(blend)[i['coffee']]
             w = ''
             if weightIn:
-                w = render_weight(i['ratio'] * weightIn, 1, weight_unit_idx)
+                w = render_weight(i['ratio'] * weightIn, 1, weight_unit_idx,smart_unit_upgrade=False)
             res.append((w,c))
     except Exception as e:  # pylint: disable=broad-except
         _log.exception(e)

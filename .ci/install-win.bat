@@ -2,15 +2,25 @@
 :: ABOUT
 :: Install script for Artisan Windows CI builds
 ::
+:: COPYRIGHT (C) 2010-2026 The Artisan team represented by
+::   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+::
 :: LICENSE
-:: This program or module is free software: you can redistribute it and/or
-:: modify it under the terms of the GNU General Public License as published
-:: by the Free Software Foundation, either version 2 of the License, or
-:: version 3 of the License, or (at your option) any later versison. It is
-:: provided for educational purposes and is distributed in the hope that
-:: it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-:: warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-:: the GNU General Public License for more details.
+:: This program or module is free software: you can redistribute it and/or modify
+:: it under the terms of the GNU Affero General Public License as
+:: published by the Free Software Foundation, either version 3 of the
+:: License, or (at your option) any later version.
+::
+:: This program is distributed in the hope that it will be useful,
+:: but WITHOUT ANY WARRANTY; without even the implied warranty of
+:: MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+:: GNU Affero General Public License for more details.
+::
+:: You should have received a copy of the GNU Affero General Public License
+:: along with this program.  If not, see <https://www.gnu.org/licenses/>.
+::
+:: MAINTAINER
+:: Marko Luther, 2026
 ::
 :: AUTHOR
 :: Dave Baxter, Marko Luther 2023
@@ -33,9 +43,7 @@ python -V
 ::
 :: get pip up to date
 ::
-:: pip update to 24.1 breaks CI
 ::python -m pip install --upgrade pip
-python -m pip install pip==24.0
 
 :: install wheel
 python -m pip install wheel
@@ -50,6 +58,17 @@ if not exist %PYTHON_PATH%\Lib\site-packages\libusb_package\libusb-1.0.dll (
     echo *** ERROR - libusb-1.0.dll is missing from the libusb-package installation
     exit /b 95
 )
+
+::
+:: appveyor_build_worker_image: Visual Studio 2026 does not supply a working lrelease.exe in Qt/6.11
+::
+echo ***** Start Install QTLinguist/lrelease.exe
+curl -L -O https://github.com/thurask/Qt-Linguist/releases/download/20260425/linguist_6.11.0.zip
+if not exist linguist_6.11.0.zip (exit /b 98)
+7z x linguist_6.11.0.zip -o.\QtLinguist\
+if not exist QtLinguist/lrelease.exe (exit /b 99)
+echo ***** Finished install QTLinguist/lrelease
+
 ::
 :: custom build the pyinstaller bootloader or install a prebuilt
 ::

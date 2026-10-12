@@ -1,17 +1,27 @@
 #!/bin/bash
 # ABOUT
 # Generate translation, ui, and help files derived from repository sources
-# for Artisan Linux and macOS builds
+# for artisan Linux and macOS builds
+#
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
 #
 # LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later versison. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
 #
 # AUTHOR
 # Dave Baxter, Marko Luther 2023
@@ -21,7 +31,9 @@ echo "build-derived.sh"
 # required environment variables...
 PYUIC="${PYUIC:-pyuic6}"
 PYLUPDATE="${PYLUPDATE:-./pylupdate6pro.py}"
-QTTOOLS=qt6-tools;
+#QTTOOLS=qt6-tools;
+export PYTHON_PATH=`python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])'`
+QT_SRC_PATH_QTTOOLS=$PYTHON_PATH/qt6_applications/Qt
 
 # Check if an argument was passed
 if [ $# != 0 ]; then
@@ -64,13 +76,21 @@ python3 $PYLUPDATE
 if [ $? -ne 0 ]; then exit $?; else echo "** Success"; fi
 
 echo "************* lrelease **************"
+
 echo "*** compiling translations"
 if [ -f "$QT_SRC_PATH/bin/lrelease" ]; then
     echo "*** using env QT_SRC_PATH: $QT_SRC_PATH/bin/lrelease"
     $QT_SRC_PATH/bin/lrelease -verbose translations/*.ts
+     $QT_SRC_PATH/bin/lrelease -version
+    if [ $? -ne 0 ]; then exit $?; else echo "** Success"; fi
+elif [ -f "$QT_SRC_PATH_QTTOOLS/bin/lrelease" ]; then
+    echo "*** using env QT_SRC_PATH_QTTOOLS: $QT_SRC_PATH_QTTOOLS/bin/lrelease"
+    $QT_SRC_PATH_QTTOOLS/bin/lrelease -version
+    $QT_SRC_PATH_QTTOOLS/bin/lrelease -verbose translations/*.ts
     if [ $? -ne 0 ]; then exit $?; else echo "** Success"; fi
 elif [[ $(type -P "$QTTOOLS") ]]; then
     echo "*** using env QTTOOLS: $QTTOOLS"
+    $QTTOOLS lrelease -version
     $QTTOOLS lrelease -verbose translations/*.ts
     if [ $? -ne 0 ]; then exit $?; else echo "** Success"; fi
 else
