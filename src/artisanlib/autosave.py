@@ -1,34 +1,43 @@
 #
 # ABOUT
-# Artisan Autosave Dialog
-
+# artisan scope autosave dialog
+#
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
 # LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
-
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
 # AUTHOR
 # Marko Luther, 2023
 
-from typing import override, cast, TYPE_CHECKING
+from typing import override, TYPE_CHECKING
 from artisanlib.dialogs import ArtisanDialog
 
 from PyQt6.QtCore import Qt, pyqtSlot, QSettings
 from PyQt6.QtWidgets import (QApplication, QMessageBox, QLabel, QPushButton, QDialogButtonBox, QFrame,
     QComboBox, QHBoxLayout, QVBoxLayout, QCheckBox, QGridLayout, QLineEdit, QSpacerItem)
-from PyQt6.QtGui import QStandardItemModel
 
 
 if TYPE_CHECKING:
     from artisanlib.main import ApplicationWindow # noqa: F401 # pylint: disable=unused-import
     from artisanlib.dialogs import HelpDlg # noqa: F401 # pylint: disable=unused-import
     from PyQt6.QtWidgets import QWidget # pylint: disable=unused-import
-    from PyQt6.QtGui import QStandardItem, QCloseEvent # pylint: disable=unused-import
+    from PyQt6.QtGui import QCloseEvent # pylint: disable=unused-import
 
 class autosaveDlg(ArtisanDialog):
     def __init__(self, parent:'QWidget', aw:'ApplicationWindow') -> None:
@@ -70,16 +79,6 @@ class autosaveDlg(ArtisanDialog):
         self.autopdfcheckbox.setChecked(self.aw.qmc.autosaveimage)
         self.imageTypesComboBox = QComboBox()
         self.imageTypesComboBox.addItems(self.aw.qmc.autoasaveimageformat_types)
-        try:
-            if not self.aw.QtWebEngineSupport:
-                # disable "PDF Report" item if QtWebEngine Support is not available
-                model = self.imageTypesComboBox.model()
-                if model is not None:
-                    item: QStandardItem|None = cast(QStandardItemModel, model).item(self.aw.qmc.autoasaveimageformat_types.index('PDF Report'))
-                    if item is not None:
-                        item.setEnabled(False)
-        except Exception: # pylint: disable=broad-except
-            pass
         self.imageTypesComboBox.setCurrentIndex(self.aw.qmc.autoasaveimageformat_types.index(self.aw.qmc.autosaveimageformat))
         prefixlabel = QLabel()
         prefixlabel.setAlignment(Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignRight)
@@ -226,5 +225,5 @@ class autosaveDlg(ArtisanDialog):
 
         if self.aw.qmc.autosaveflag and self.aw.qmc.autosavepath == '':
             QMessageBox.warning(None, #self.aw, # only without super this one shows the native dialog on macOS under Qt 6.6.2 and later
-                QApplication.translate('Message', 'Warning', None),
+                QApplication.translate('Message', 'Warning'),
                 QApplication.translate('Message', 'Autosave turned ON, but filepath empty!\n\nATTENTION: Recorded data will get cleared without confirmation'))

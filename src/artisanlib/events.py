@@ -1,17 +1,27 @@
 #
 # ABOUT
-# Artisan Events Dialog
-
+# artisan scope events dialog
+#
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
 # LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
-
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
 # AUTHOR
 # Marko Luther, 2023
 
@@ -30,6 +40,7 @@ from artisanlib.main import UI_MODE
 from artisanlib.util import comma2dot, eventtime2string
 from artisanlib.dialogs import ArtisanResizeablDialog, ArtisanDialog
 from artisanlib.widgets import MyQComboBox, MyQDoubleSpinBox
+from artisanlib.table_style import horizontal_header_style, vertical_header_style
 
 from uic import SliderCalculatorDialog # pyright: ignore[attr-defined] # pylint: disable=no-name-in-module
 
@@ -656,10 +667,14 @@ class EventsDlg(ArtisanResizeablDialog):
         self.eventbuttontable = QTableWidget()
         self.eventbuttontable.setTabKeyNavigation(True)
         self.eventbuttontable.itemSelectionChanged.connect(self.selectionChanged)
-        vheader: QHeaderView|None = self.eventbuttontable.verticalHeader()
-        if vheader is not None:
-            vheader.sectionMoved.connect(self.sectionMoved)
-#        self.createEventbuttonTable()
+        horizontal_header = self.eventbuttontable.horizontalHeader()
+        if horizontal_header is not None:
+            horizontal_header.setStyleSheet(horizontal_header_style(self.aw.app.darkmode))
+        vertical_header = self.eventbuttontable.verticalHeader()
+        if vertical_header is not None:
+            vertical_header.setStyleSheet(vertical_header_style(self.aw.app.darkmode))
+            vertical_header.setDefaultAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
+            vertical_header.sectionMoved.connect(self.sectionMoved)
         self.copyeventbuttonTableButton = QPushButton(QApplication.translate('Button', 'Copy Table'))
         self.copyeventbuttonTableButton.setToolTip(QApplication.translate('Tooltip','Copy table to clipboard, OPTION or ALT click for tabular text'))
         self.copyeventbuttonTableButton.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -782,22 +797,34 @@ class EventsDlg(ArtisanResizeablDialog):
         self.E1action.setToolTip(QApplication.translate('Tooltip', 'Action Type'))
         self.E1action.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.E1action.addItems(self.sliderActionTypesSorted)
-        self.E1action.setCurrentIndex(self.sliderActionTypesSorted.index(self.sliderActionTypes[self.aw.eventslideractions[0]]))
+        try:
+            self.E1action.setCurrentIndex(self.sliderActionTypesSorted.index(self.sliderActionTypes[self.aw.eventslideractions[0]]))
+        except Exception: # pylint: disable=broad-except
+            pass # eventslideractions[0] might point to an action type not supported
         self.E2action = QComboBox()
         self.E2action.setToolTip(QApplication.translate('Tooltip', 'Action Type'))
         self.E2action.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.E2action.addItems(self.sliderActionTypesSorted)
-        self.E2action.setCurrentIndex(self.sliderActionTypesSorted.index(self.sliderActionTypes[self.aw.eventslideractions[1]]))
+        try:
+            self.E2action.setCurrentIndex(self.sliderActionTypesSorted.index(self.sliderActionTypes[self.aw.eventslideractions[1]]))
+        except Exception: # pylint: disable=broad-except
+            pass # eventslideractions[1] might point to an action type not supported
         self.E3action = QComboBox()
         self.E3action.setToolTip(QApplication.translate('Tooltip', 'Action Type'))
         self.E3action.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.E3action.addItems(self.sliderActionTypesSorted)
-        self.E3action.setCurrentIndex(self.sliderActionTypesSorted.index(self.sliderActionTypes[self.aw.eventslideractions[2]]))
+        try:
+            self.E3action.setCurrentIndex(self.sliderActionTypesSorted.index(self.sliderActionTypes[self.aw.eventslideractions[2]]))
+        except Exception: # pylint: disable=broad-except
+            pass # eventslideractions[2] might point to an action type not supported
         self.E4action = QComboBox()
         self.E4action.setToolTip(QApplication.translate('Tooltip', 'Action Type'))
         self.E4action.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.E4action.addItems(self.sliderActionTypesSorted)
-        self.E4action.setCurrentIndex(self.sliderActionTypesSorted.index(self.sliderActionTypes[self.aw.eventslideractions[3]]))
+        try:
+            self.E4action.setCurrentIndex(self.sliderActionTypesSorted.index(self.sliderActionTypes[self.aw.eventslideractions[3]]))
+        except Exception: # pylint: disable=broad-except
+            pass # eventslideractions[3] might point to an action type not supported
         self.E1command = QLineEdit(self.aw.eventslidercommands[0])
         self.E2command = QLineEdit(self.aw.eventslidercommands[1])
         self.E3command = QLineEdit(self.aw.eventslidercommands[2])
@@ -1282,7 +1309,10 @@ class EventsDlg(ArtisanResizeablDialog):
         self.CHARGEbuttonActionType.setToolTip(QApplication.translate('Tooltip', 'Action type to fire when the button is clicked'))
         self.CHARGEbuttonActionType.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.CHARGEbuttonActionType.addItems(self.buttonActionTypesSorted)
-        self.CHARGEbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.buttonactions[0]]))
+        try:
+            self.CHARGEbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.buttonactions[0]]))
+        except Exception: # pylint: disable=broad-except
+            pass
         self.CHARGEbuttonActionString = QLineEdit(self.aw.qmc.buttonactionstrings[0])
         self.CHARGEbuttonActionString.setToolTip(QApplication.translate('Tooltip', 'Event action command'))
         self.DRYbutton = QCheckBox(QApplication.translate('Label', 'DRY END'))
@@ -1292,7 +1322,10 @@ class EventsDlg(ArtisanResizeablDialog):
         self.DRYbuttonActionType.setToolTip(QApplication.translate('Tooltip', 'Action type to fire when the button is clicked'))
         self.DRYbuttonActionType.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.DRYbuttonActionType.addItems(self.buttonActionTypesSorted)
-        self.DRYbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.buttonactions[1]]))
+        try:
+            self.DRYbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.buttonactions[1]]))
+        except Exception: # pylint: disable=broad-except
+            pass
         self.DRYbuttonActionString = QLineEdit(self.aw.qmc.buttonactionstrings[1])
         self.DRYbuttonActionString.setToolTip(QApplication.translate('Tooltip', 'Event action command'))
         self.FCSbutton = QCheckBox(QApplication.translate('Label', 'FC START'))
@@ -1302,7 +1335,10 @@ class EventsDlg(ArtisanResizeablDialog):
         self.FCSbuttonActionType.setToolTip(QApplication.translate('Tooltip', 'Action type to fire when the button is clicked'))
         self.FCSbuttonActionType.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.FCSbuttonActionType.addItems(self.buttonActionTypesSorted)
-        self.FCSbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.buttonactions[2]]))
+        try:
+            self.FCSbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.buttonactions[2]]))
+        except Exception: # pylint: disable=broad-except
+            pass
         self.FCSbuttonActionString = QLineEdit(self.aw.qmc.buttonactionstrings[2])
         self.FCSbuttonActionString.setToolTip(QApplication.translate('Tooltip', 'Event action command'))
         self.FCEbutton = QCheckBox(QApplication.translate('Label', 'FC END'))
@@ -1312,7 +1348,10 @@ class EventsDlg(ArtisanResizeablDialog):
         self.FCEbuttonActionType.setToolTip(QApplication.translate('Tooltip', 'Action type to fire when the button is clicked'))
         self.FCEbuttonActionType.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.FCEbuttonActionType.addItems(self.buttonActionTypesSorted)
-        self.FCEbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.buttonactions[3]]))
+        try:
+            self.FCEbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.buttonactions[3]]))
+        except Exception: # pylint: disable=broad-except
+            pass
         self.FCEbuttonActionString = QLineEdit(self.aw.qmc.buttonactionstrings[3])
         self.FCEbuttonActionString.setToolTip(QApplication.translate('Tooltip', 'Event action command'))
         self.SCSbutton = QCheckBox(QApplication.translate('Label', 'SC START'))
@@ -1322,7 +1361,10 @@ class EventsDlg(ArtisanResizeablDialog):
         self.SCSbuttonActionType.setToolTip(QApplication.translate('Tooltip', 'Action type to fire when the button is clicked'))
         self.SCSbuttonActionType.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.SCSbuttonActionType.addItems(self.buttonActionTypesSorted)
-        self.SCSbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.buttonactions[4]]))
+        try:
+            self.SCSbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.buttonactions[4]]))
+        except Exception: # pylint: disable=broad-except
+            pass
         self.SCSbuttonActionString = QLineEdit(self.aw.qmc.buttonactionstrings[4])
         self.SCSbuttonActionString.setToolTip(QApplication.translate('Tooltip', 'Event action command'))
         self.SCEbutton = QCheckBox(QApplication.translate('Label', 'SC END'))
@@ -1332,7 +1374,10 @@ class EventsDlg(ArtisanResizeablDialog):
         self.SCEbuttonActionType.setToolTip(QApplication.translate('Tooltip', 'Action type to fire when the button is clicked'))
         self.SCEbuttonActionType.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.SCEbuttonActionType.addItems(self.buttonActionTypesSorted)
-        self.SCEbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.buttonactions[5]]))
+        try:
+            self.SCEbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.buttonactions[5]]))
+        except Exception: # pylint: disable=broad-except
+            pass
         self.SCEbuttonActionString = QLineEdit(self.aw.qmc.buttonactionstrings[5])
         self.SCEbuttonActionString.setToolTip(QApplication.translate('Tooltip', 'Event action command'))
         self.DROPbutton = QCheckBox(QApplication.translate('Label', 'DROP'))
@@ -1342,7 +1387,10 @@ class EventsDlg(ArtisanResizeablDialog):
         self.DROPbuttonActionType.setToolTip(QApplication.translate('Tooltip', 'Action type to fire when the button is clicked'))
         self.DROPbuttonActionType.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.DROPbuttonActionType.addItems(self.buttonActionTypesSorted)
-        self.DROPbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.buttonactions[6]]))
+        try:
+            self.DROPbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.buttonactions[6]]))
+        except Exception: # pylint: disable=broad-except
+            pass
         self.DROPbuttonActionString = QLineEdit(self.aw.qmc.buttonactionstrings[6])
         self.DROPbuttonActionString.setToolTip(QApplication.translate('Tooltip', 'Event action command'))
         self.COOLbutton = QCheckBox(QApplication.translate('ComboBox', 'COOL END'))
@@ -1352,7 +1400,10 @@ class EventsDlg(ArtisanResizeablDialog):
         self.COOLbuttonActionType.setToolTip(QApplication.translate('Tooltip', 'Action type to fire when the button is clicked'))
         self.COOLbuttonActionType.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.COOLbuttonActionType.addItems(self.buttonActionTypesSorted)
-        self.COOLbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.buttonactions[7]]))
+        try:
+            self.COOLbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.buttonactions[7]]))
+        except Exception: # pylint: disable=broad-except
+            pass
         self.COOLbuttonActionString = QLineEdit(self.aw.qmc.buttonactionstrings[7])
         self.COOLbuttonActionString.setToolTip(QApplication.translate('Tooltip', 'Event action command'))
         self.ONbuttonLabel = QLabel(QApplication.translate('Label', 'ON'))
@@ -1360,14 +1411,20 @@ class EventsDlg(ArtisanResizeablDialog):
         self.ONbuttonActionType.setToolTip(QApplication.translate('Tooltip', 'Action type to fire when the button is clicked'))
         self.ONbuttonActionType.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.ONbuttonActionType.addItems(self.buttonActionTypesSorted)
-        self.ONbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.extrabuttonactions[0]]))
+        try:
+            self.ONbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.extrabuttonactions[0]]))
+        except Exception: # pylint: disable=broad-except
+            pass
         self.ONbuttonActionString = QLineEdit(self.aw.qmc.extrabuttonactionstrings[0])
         self.ONbuttonActionString.setToolTip(QApplication.translate('Tooltip', 'Event action command'))
         self.OFFbuttonActionType = QComboBox()
         self.OFFbuttonActionType.setToolTip(QApplication.translate('Tooltip', 'Action type to fire when the button is clicked'))
         self.OFFbuttonActionType.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.OFFbuttonActionType.addItems(self.buttonActionTypesSorted)
-        self.OFFbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.extrabuttonactions[1]]))
+        try:
+            self.OFFbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.extrabuttonactions[1]]))
+        except Exception: # pylint: disable=broad-except
+            pass
         self.OFFbuttonActionString = QLineEdit(self.aw.qmc.extrabuttonactionstrings[1])
         self.OFFbuttonActionString.setToolTip(QApplication.translate('Tooltip', 'Event action command'))
         self.OFFbuttonLabel = QLabel(QApplication.translate('Label', 'OFF'))
@@ -1375,7 +1432,10 @@ class EventsDlg(ArtisanResizeablDialog):
         self.SAMPLINGbuttonActionType.setToolTip(QApplication.translate('Tooltip', 'Sampling action type'))
         self.SAMPLINGbuttonActionType.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.SAMPLINGbuttonActionType.addItems(self.buttonActionTypesSorted)
-        self.SAMPLINGbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.extrabuttonactions[2]]))
+        try:
+            self.SAMPLINGbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.extrabuttonactions[2]]))
+        except Exception: # pylint: disable=broad-except
+            pass
         self.SAMPLINGbuttonActionType.currentIndexChanged.connect(self.SAMPLINGbuttonActionTypeChanged)
         self.SAMPLINGbuttonActionType.setMinimumContentsLength(3)
         self.SAMPLINGbuttonActionType.setMinimumWidth(self.SAMPLINGbuttonActionType.minimumSizeHint().width())
@@ -1398,7 +1458,10 @@ class EventsDlg(ArtisanResizeablDialog):
         self.RESETbuttonActionType.setToolTip(QApplication.translate('Tooltip', 'Action type to fire when the button is clicked'))
         self.RESETbuttonActionType.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.RESETbuttonActionType.addItems(self.buttonActionTypesSorted)
-        self.RESETbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.xextrabuttonactions[0]]))
+        try:
+            self.RESETbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.xextrabuttonactions[0]]))
+        except Exception: # pylint: disable=broad-except
+            pass
         self.RESETbuttonActionString = QLineEdit(self.aw.qmc.xextrabuttonactionstrings[0])
         self.RESETbuttonActionString.setToolTip(QApplication.translate('Tooltip', 'Event action command'))
         self.STARTbuttonLabel = QLabel(QApplication.translate('Label', 'START'))
@@ -1406,7 +1469,10 @@ class EventsDlg(ArtisanResizeablDialog):
         self.STARTbuttonActionType.setToolTip(QApplication.translate('Tooltip', 'Action type to fire when the button is clicked'))
         self.STARTbuttonActionType.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.STARTbuttonActionType.addItems(self.buttonActionTypesSorted)
-        self.STARTbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.xextrabuttonactions[1]]))
+        try:
+            self.STARTbuttonActionType.setCurrentIndex(self.buttonActionTypesSorted.index(self.buttonActionTypes[self.aw.qmc.xextrabuttonactions[1]]))
+        except Exception: # pylint: disable=broad-except
+            pass
         self.STARTbuttonActionString = QLineEdit(self.aw.qmc.xextrabuttonactionstrings[1])
         self.STARTbuttonActionString.setToolTip(QApplication.translate('Tooltip', 'Event action command'))
         defaultButtonsLayout = QGridLayout()
@@ -1450,8 +1516,24 @@ class EventsDlg(ArtisanResizeablDialog):
         defaultButtonsLayout.setHorizontalSpacing(10)
         defaultButtonsLayout.setVerticalSpacing(5)
         defaultButtonsLayout.setColumnMinimumWidth(3,20)
+
+        self.eventUndo = QCheckBox(QApplication.translate('CheckBox','UNDO'))
+        self.eventUndo.setToolTip(QApplication.translate('Tooltip', 'Undoing of event markers by pressing the corresponding main event button again'))
+        self.eventUndo.setChecked(bool(self.aw.qmc.main_event_buttons_undo_enabled))
+
+        defaultButtonsOptionsQHBoxLayout = QHBoxLayout()
+        defaultButtonsOptionsQHBoxLayout.addStretch()
+        defaultButtonsOptionsQHBoxLayout.addWidget(self.eventUndo)
+        defaultButtonsOptionsQHBoxLayout.addStretch()
+
+        defaultButtonsQVBoxLayout = QVBoxLayout()
+        defaultButtonsQVBoxLayout.addLayout(defaultButtonsLayout)
+        defaultButtonsQVBoxLayout.addLayout(defaultButtonsOptionsQHBoxLayout)
+
         ButtonGroupLayout = QGroupBox(QApplication.translate('GroupBox','Default Buttons'))
-        ButtonGroupLayout.setLayout(defaultButtonsLayout)
+#        ButtonGroupLayout.setLayout(defaultButtonsLayout)
+        ButtonGroupLayout.setLayout(defaultButtonsQVBoxLayout)
+
         if self.app.artisanviewerMode:
             ButtonGroupLayout.setEnabled(False)
 
@@ -2214,10 +2296,22 @@ class EventsDlg(ArtisanResizeablDialog):
         self.E3visibility.setChecked(bool(self.aw.eventslidervisibilities[2]))
         self.E4visibility.setChecked(bool(self.aw.eventslidervisibilities[3]))
         # set slider action
-        self.E1action.setCurrentIndex(self.sliderActionTypesSorted.index(self.sliderActionTypes[self.aw.eventslideractions[0]]))
-        self.E2action.setCurrentIndex(self.sliderActionTypesSorted.index(self.sliderActionTypes[self.aw.eventslideractions[1]]))
-        self.E3action.setCurrentIndex(self.sliderActionTypesSorted.index(self.sliderActionTypes[self.aw.eventslideractions[2]]))
-        self.E4action.setCurrentIndex(self.sliderActionTypesSorted.index(self.sliderActionTypes[self.aw.eventslideractions[3]]))
+        try:
+            self.E1action.setCurrentIndex(self.sliderActionTypesSorted.index(self.sliderActionTypes[self.aw.eventslideractions[0]]))
+        except Exception: # pylint: disable=broad-except
+            pass # eventslideractions[2] might point to an action type not supported
+        try:
+            self.E2action.setCurrentIndex(self.sliderActionTypesSorted.index(self.sliderActionTypes[self.aw.eventslideractions[1]]))
+        except Exception: # pylint: disable=broad-except
+            pass # eventslideractions[2] might point to an action type not supported
+        try:
+            self.E3action.setCurrentIndex(self.sliderActionTypesSorted.index(self.sliderActionTypes[self.aw.eventslideractions[2]]))
+        except Exception: # pylint: disable=broad-except
+            pass # eventslideractions[2] might point to an action type not supported
+        try:
+            self.E4action.setCurrentIndex(self.sliderActionTypesSorted.index(self.sliderActionTypes[self.aw.eventslideractions[3]]))
+        except Exception: # pylint: disable=broad-except
+            pass # eventslideractions[2] might point to an action type not supported
         # set slider command
         self.E1command.setText(self.aw.eventslidercommands[0])
         self.E2command.setText(self.aw.eventslidercommands[1])
@@ -2518,7 +2612,7 @@ class EventsDlg(ArtisanResizeablDialog):
                 if len(copy)>25:
                     self.aw.buttonpalette_label = copy[25]
                 else:
-                    self.aw.buttonpalette_label = self.aw.buttonpalette_default_label # type:ignore[unreachable, unused-ignore] # ty:ignore[ignore]
+                    self.aw.buttonpalette_label = self.aw.buttonpalette_default_label # type:ignore[unreachable, unused-ignore]
                 if len(copy)>26 and len(copy[26]) == 4:
                     self.aw.eventquantifieraction = copy[26][:]
                 else:
@@ -2772,7 +2866,10 @@ class EventsDlg(ArtisanResizeablDialog):
             act = self.extraeventsactions[i]
             if act > 7:
                 act = act - 1
-            actionComboBox.setCurrentIndex(self.custom_button_actions_sorted.index(self.custom_button_actions[act]))
+            try:
+                actionComboBox.setCurrentIndex(self.custom_button_actions_sorted.index(self.custom_button_actions[act]))
+            except Exception: # pylint: disable=broad-except
+                pass
             actionComboBox.currentIndexChanged.connect(self.setactioneventbutton)
 
             #5 Action Description
@@ -3574,6 +3671,7 @@ class EventsDlg(ArtisanResizeablDialog):
                 # save column widths
                 self.aw.eventbuttontablecolumnwidths = [self.eventbuttontable.columnWidth(c) for c in range(self.eventbuttontable.columnCount())]
                 #save default buttons
+                self.aw.qmc.main_event_buttons_undo_enabled = self.eventUndo.isChecked()
                 self.aw.qmc.buttonvisibility[0] = self.CHARGEbutton.isChecked()
                 self.aw.buttonCHARGE.setVisible(bool(self.aw.qmc.buttonvisibility[0]))
                 if bool(self.aw.qmc.buttonvisibility[0]) and not self.aw.buttonCHARGE.isFlat() and not self.aw.buttonCHARGE.animating:
@@ -3840,7 +3938,7 @@ class SliderCalculator(ArtisanDialog):
         self.sliderMin = sliderMin
         self.sliderMax = sliderMax
         self.ui = SliderCalculatorDialog.Ui_SliderCalculator()
-        self.ui.setupUi(self) # type:ignore[no-untyped-call, unused-ignore] # ty:ignore[ignore]
+        self.ui.setupUi(self) # type:ignore[no-untyped-call, unused-ignore]
         self.setWindowTitle(QApplication.translate('Form Caption','Slider Calculator'))
         self.ui.buttonBox.setStandardButtons(QDialogButtonBox.StandardButton.Cancel|QDialogButtonBox.StandardButton.Apply)
         # hack to assign the Apply button the AcceptRole without losing default system translations

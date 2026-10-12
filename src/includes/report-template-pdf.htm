@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8">
+<title>$title</title>
+<meta name="description" content="Artisan roast report">
+<meta name="author" content="Artisan Roaster Scope">
+<script src="${resources}sorttable.js"></script>
+<style>
+body {
+    background: #ffffff;
+    color: #0f5071;
+}
+a {
+  color: #0f5071;
+}
+h1 {
+  color: #2978a3;
+}
+.inv {
+    color: #264859;
+    background-color: #c9cdcf !important;
+}
+table {
+    border-collapse: collapse;
+    width: 100%;
+}
+th, td {
+    text-align: left;
+    padding: 8px;
+    white-space:nowrap;
+    border: 1px solid #d7d9db;
+}
+td:nth-child(3) {
+     width: 30%;
+}
+td:nth-child(4) {
+     width: 30%;
+}
+td:nth-child(5),td:nth-child(6),td:nth-child(7) {
+    text-align: right;
+}
+tr {
+    background-color: #f2f2f2 !important;
+    page-break-inside: avoid;
+}
+tr:nth-child(even) {
+    background-color: #fafafa !important;
+    -webkit-print-color-adjust: exact;
+}
+tfoot {
+    background-color: #949b9e !important;
+    color: white !important;
+    -webkit-print-color-adjust: exact;
+    font-weight: bold;
+}
+th {
+    font-size: large;
+    text-align: center;
+    vertical-align: middle;
+    background-color: #3997c6;;
+    color: #ffffff !important;
+    -webkit-print-color-adjust: exact; 
+}
+@media screen and (prefers-color-scheme: dark) {
+  body {
+      background: #242728;
+      color: #9da9af;
+  }
+  a {
+    color: #269dd9;
+  }
+  h1 {
+    color: #5ebbed;
+  }
+  .inv {
+      color: #29363d;
+      background-color: #949b9e !important;
+  }
+  th, td {
+      text-align: left;
+      padding: 8px;
+      white-space:nowrap;
+      border: 1px solid #819098;
+  }
+  tr {
+      background-color: #242728 !important;
+      page-break-inside: avoid;
+  }
+  tr:nth-child(even) {
+      background-color: #242728 !important;
+      -webkit-print-color-adjust: exact;
+  }
+  tfoot {
+      background-color: #494e50 !important;
+      color: white !important;
+      -webkit-print-color-adjust: exact;
+      font-weight: bold;
+  }
+  th {
+      font-size: large;
+      text-align: center;
+      background-color: #297aa3;
+      color: #f2f2f2 !important;
+      -webkit-print-color-adjust: exact; 
+  }
+}
+</style>
+</head>
+<body>
+<h1>$title</h1>
+<table class="sortable">
+<thead>
+<tr>
+<th>$batch</th>
+<th class="sorttable_numeric">$time</th>
+<th>$profile</th>
+<th>$beans</th>
+<th>$weightin<br><small>($unit)</small></th>
+<th>$weightout<br><small>($unit)</small></th>
+<th>$loss<br><small>(%)</small></th>
+</tr>
+</thead>
+<tbody>
+$entries
+</tbody>
+<tfoot>
+<tr>
+<td class="inv"><b>$sum</b></td>
+<td></td>
+<td></td>
+<td></td>
+<td class="inv">${total_in}</td>
+<td class="inv">${total_out}</td>
+<td class="inv">${total_loss}</td>
+</tr>
+</tfoot>
+</table>
+</body>
+</html>

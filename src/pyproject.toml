@@ -1,7 +1,7 @@
 [project]
 name = 'Artisan'
 dynamic = ['version']
-description = "Artisan is a software that helps coffee roasters record, analyze, and control roast profiles."
+description = "Artisan Scope is a software that helps coffee roasters record, analyze, and control roast profiles"
 readme = {file = 'README.txt', content-type='text/markdown'}
 authors = [
     {name = 'Rafael Cobo'},
@@ -12,7 +12,7 @@ maintainers = [
     {name = 'Marko Luther'},
     {name = 'Dave Baxter'}
 ]
-license = 'GPL-3.0'
+license = 'AGPLv3+'
 license-files = ['LICENSE']
 requires-python = '>=3.12'
 keywords = ['roasting', 'roast logging', 'speciality coffee']
@@ -21,6 +21,7 @@ classifiers = [
     'Operating System :: Windows',
     'Operating System :: MacOS',
     'Operating System :: POSIX :: Linux',
+    'License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)',
     'Programming Language :: Python',
     'Programming Language :: Python :: 3',
     'Programming Language :: Python :: 3.12',
@@ -303,7 +304,7 @@ output-format = "pylint" # one of: text, json, junit, grouped, github, gitlab, p
 line-length = 80
 
 # Never enforce `E501` (line length violations).
-lint.ignore = ["E501", "E741", "E402", "PLR0912", "PLR0913", "PLR0915", "SIM105", "PLR2044", "PLR2004", "PLW0603", "PLR0911", "COM812", "A005"]
+lint.ignore = ["E501", "E741", "E402", "PLR0912", "PLR0913", "PLR0915", "PLR0917", "SIM105", "PLR2044", "PLR2004", "PLW0603", "PLR0911", "COM812", "A005"]
 
 # Exclude a variety of commonly ignored directories.
 exclude = ["dist", "build", "proto", ".pytype", ".mypy_cache", ".git", ".venv", ".venv_universal", ".venv_arm"]
@@ -397,7 +398,7 @@ directory = ".htmlcov"
 skip = '*.ts,./coverage,./build,./dist*,./htmlcov,./*.spec,*.svg'
 count = ''
 quiet-level = 3
-ignore-words-list = 'Abd,ser,alog,nd,iterm,dout,te,commandi,dout,exitt,currenty,exaust,controle,coment,controle,outweight,everytime,sade,weightIn,weightin,Caf,caf'
+ignore-words-list = 'Abd,ser,alog,nd,iterm,dout,te,commandi,dout,exitt,currenty,exaust,controle,coment,controle,outweight,everytime,sade,weightIn,weightin,Caf,caf,Equil'
 
 
 
@@ -411,9 +412,13 @@ include = [
 ]
 
 [tool.ty.rules]
+invalid-key = "ignore"
 invalid-argument-type = "ignore"
 invalid-method-override = "ignore"
 invalid-assignment = "ignore"
+unknown-argument = "ignore"
+unresolved-attribute = "ignore"
+unresolved-import = "ignore"
 #unused-ignore-comment = "warn"
 #redundant-cast = "ignore"
 #possibly-unbound-attribute = "error"
@@ -449,3 +454,4 @@ bad-argument-type = false # pyrefly misinterprets @pyqtSlot() declarations
 [tool.zuban]
 files = ["artisanlib/*.py", "plus/*.py"]
 exclude = ['build', 'dist', 'uic', 'misc']
+disallow_untyped_calls = false

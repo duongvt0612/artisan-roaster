@@ -1,22 +1,32 @@
 #
 # ABOUT
-# Artisan Dialogs
-
+# artisan scope dialogs
+#
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
 # LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
-
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
 # AUTHOR
 # Marko Luther, 2023
 
 from contextlib import contextmanager
-from collections.abc import Iterator
+from collections.abc import Generator
 from typing import override, Any, TYPE_CHECKING
 
 from artisanlib.util import stringtoseconds, createGradient
@@ -29,13 +39,13 @@ if TYPE_CHECKING:
 from PyQt6.QtCore import (Qt, pyqtSignal, pyqtSlot, QLine, QEvent,
     QByteArray, QPropertyAnimation, QEasingCurve, QLocale)
 from PyQt6.QtCore import pyqtProperty # type:ignore[attr-defined]
-from PyQt6.QtWidgets import (QApplication, QSplitter, QSplitterHandle, QLabel, QComboBox, QLineEdit, QTextEdit, QDoubleSpinBox, QPushButton,
+from PyQt6.QtWidgets import (QApplication, QSplitter, QSplitterHandle, QLabel, QComboBox, QLineEdit, QTextEdit, QPlainTextEdit, QDoubleSpinBox, QPushButton,
     QTableWidget, QTableWidgetItem, QSizePolicy, QLCDNumber, QGroupBox, QFrame, QSlider, QStyle, QStyleOptionSlider)
 from PyQt6.QtGui import QPen, QPainter, QFontMetrics, QColor, QCursor, QEnterEvent, QPaintEvent
 
 
 @contextmanager
-def wait_cursor() -> Iterator[None]:
+def wait_cursor() -> Generator[None]:
     try:
         QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
         yield
@@ -133,7 +143,7 @@ class MyTableWidgetItemQLineEdit(QTableWidgetItem):
 
     #Qt uses a simple < check for sorting items, override this to use the sortKey
     @override
-    def __lt__(self, other:'MyTableWidgetItemQLineEdit') -> bool: # type: ignore[override] # ty:ignore[unused]
+    def __lt__(self, other:'MyTableWidgetItemQLineEdit') -> bool: # type: ignore[override]
         a = self.sortKey.text()
         b = other.sortKey.text()
         try:
@@ -155,7 +165,7 @@ class MyTableWidgetItemQTime(QTableWidgetItem):
 
     #Qt uses a simple < check for sorting items, override this to use the sortKey
     @override
-    def __lt__(self, other:'MyTableWidgetItemQTime') -> bool: # type: ignore[override] # ty:ignore[unused]
+    def __lt__(self, other:'MyTableWidgetItemQTime') -> bool: # type: ignore[override]
         a = self.sortKey.time().minute() * 60 + self.sortKey.time().second()
         b = other.sortKey.time().minute() * 60 + other.sortKey.time().second()
         return a < b
@@ -168,7 +178,7 @@ class MyTableWidgetItemNumber(QTableWidgetItem):
 
     #Qt uses a simple < check for sorting items, override this to use the sortKey
     @override
-    def __lt__(self, other:'MyTableWidgetItemNumber') -> bool: # type: ignore[override] # ty:ignore[unused]
+    def __lt__(self, other:'MyTableWidgetItemNumber') -> bool: # type: ignore[override]
         return self.sortKey < other.sortKey
 
 class MyTableWidgetItemQCheckBox(QTableWidgetItem):
@@ -180,7 +190,7 @@ class MyTableWidgetItemQCheckBox(QTableWidgetItem):
 
     #Qt uses a simple < check for sorting items, override this to use the sortKey
     @override
-    def __lt__(self, other:'MyTableWidgetItemQCheckBox') -> bool:  # type: ignore[override] # ty:ignore[unused]
+    def __lt__(self, other:'MyTableWidgetItemQCheckBox') -> bool:  # type: ignore[override]
         return self.sortKey.isChecked() < other.sortKey.isChecked()
 
 class MyTableWidgetItemQComboBox(QTableWidgetItem):
@@ -192,7 +202,7 @@ class MyTableWidgetItemQComboBox(QTableWidgetItem):
 
     #Qt uses a simple < check for sorting items, override this to use the sortKey
     @override
-    def __lt__(self, other:'MyTableWidgetItemQComboBox') -> bool: # type: ignore[override] # ty:ignore[unused]
+    def __lt__(self, other:'MyTableWidgetItemQComboBox') -> bool: # type: ignore[override]
         return str(self.sortKey.currentText()) < str(other.sortKey.currentText())
 
 
@@ -270,6 +280,23 @@ class MyQLabel(QLabel):
             #--- update font size ---
             self.setFont(f)
 
+class StyledQLineEdit(QLineEdit):
+    def __init__(self, parent: 'QWidget|None' = None) -> None:
+        super().__init__(parent)
+        lineEditstyle = """
+            QLineEdit {
+                border-radius: 10px;
+                padding: 5px;
+                border-color: palette(window);
+                border-width: 2px;
+                border-style: solid;
+                background-color: palette(base);
+            }
+            QLineEdit:focus {
+                border-color: palette(Accent);
+            }
+        """
+        self.setStyleSheet(lineEditstyle)
 
 class ClickableQLabel(QLabel):
     clicked = pyqtSignal()
@@ -339,8 +366,55 @@ class ClickableLCDFrame(QFrame):
                 self.right_clicked.emit()
 
 
+# Text Edits
+
+def textEditColorStyle(
+        background_color: str|None = None,
+        selection_background_color: str|None = None) -> str:
+    if background_color is not None and selection_background_color is not None:
+        return f"""
+            QTextEdit, QPlainTextEdit {{
+                background-color: {background_color};
+                selection-background-color: {selection_background_color};
+                padding: 0 0.8px;
+                border-radius: 10px;
+                border-width: 2px;
+                border-style: solid;
+                border-color: palette(dark);
+            }}
+            QTextEdit, QPlainTextEdit:focus {{
+                border-color: palette(accent);
+            }}
+        """
+    return """
+        QTextEdit, QPlainTextEdit {
+            background-color: palette(base);
+            padding: 0 0.8px;
+            border-radius: 10px;
+            border-width: 2px;
+            border-style: solid;
+            border-color: palette(dark);
+        }
+        QTextEdit:focus, QPlainTextEdit:focus {
+            border-color: palette(accent);
+        }
+    """
+
+
+class ArtisanTextEdit(QTextEdit):
+    def __init__(self, parent:'QWidget|None' = None, **kwargs:dict[Any,Any]) -> None:
+        super().__init__(parent, **kwargs)
+        self.setStyleSheet(textEditColorStyle())
+
+
+class ArtisanPlainTextEdit(QPlainTextEdit):
+    def __init__(self, parent:'QWidget|None' = None, **kwargs:dict[Any,Any]) -> None:
+        super().__init__(parent, **kwargs)
+        self.setStyleSheet(textEditColorStyle())
+
+
 # this one emits a clicked event on right-clicks and an editingFinished event when the text was changed and the focus got lost
-class ClickableTextEdit(QTextEdit):
+class ClickableTextEdit(ArtisanPlainTextEdit):
     clicked = pyqtSignal()
     editingFinished = pyqtSignal()
     receivedFocus = pyqtSignal()
@@ -377,7 +451,7 @@ class ClickableTextEdit(QTextEdit):
         self._changed = state
 
     def setNewPlainText(self, text:str) -> None:
-        QTextEdit.setPlainText(self, text)
+        self.setPlainText(text)
         self._changed = False
 
 # this one emits a clicked event on right-clicks and an editingFinished event when the text was changed and the focus got lost

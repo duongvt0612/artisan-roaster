@@ -443,8 +443,20 @@
         </tr>
         <tr>
             <td>&#160;</td>
+            <td>orbiter(&lt;cmd&gt;[,&lt;value&gt;[,&lt;param&gt;]])</td>
+            <td>sends &lt;cmd&gt; (1byte in HEX) and optional &lt;value&gt; (0-65535) and &lt;param&gt; (0-255) to Orbiter</td>
+            <td>&#160;</td>
+        </tr>
+        <tr>
+            <td>&#160;</td>
             <td>shellyrelay(n,b)</td>
             <td>switches Shelly plug number &lt;n&gt; ON if b is true or 1, and OFF otherwise</td>
+            <td>&#160;</td>
+        </tr>
+        <tr>
+            <td>&#160;</td>
+            <td>publish(&lt;topic&gt;, &lt;value&gt;)</td>
+            <td>converts the given data to JSON and publishes it on the MQTT server to the given topic</td>
             <td>&#160;</td>
         </tr>
         <tr>
@@ -607,6 +619,12 @@
             <td>&#160;</td>
             <td>pidSVC(&lt;float&gt;)</td>
             <td>sets the PID target set value SV given in C</td>
+            <td>&#160;</td>
+        </tr>
+        <tr>
+            <td>&#160;</td>
+            <td>pidSVbuttons(&lt;bool&gt;)</td>
+            <td>toggles the visibility of the PID SV buttons</td>
             <td>&#160;</td>
         </tr>
         <tr>
@@ -787,6 +805,12 @@
             <td>&#160;</td>
             <td>showBackgroundEvents(&lt;bool&gt;)</td>
             <td>shows/hides the events of the background profile</td>
+            <td>&#160;</td>
+        </tr>
+        <tr>
+            <td>&#160;</td>
+            <td>upload2RoastHubs</td>
+            <td>upload current loaded profile to RoastHubs</td>
             <td>&#160;</td>
         </tr>
         <tr>

@@ -1,18 +1,26 @@
 ; ABOUT
-; NSIS script file for Artisan Windows installer.
+; NSIS script file for artisan Windows installer.
+;
+; COPYRIGHT (C) 2010-2026 The artisan team represented by
+; Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
 ;
 ; LICENSE
-; This program or module is free software: you can redistribute it and/or
-; modify it under the terms of the GNU General Public License as published
-; by the Free Software Foundation, either version 2 of the License, or
-; version 3 of the License, or (at your option) any later versison. It is
-; provided for educational purposes and is distributed in the hope that
-; it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-; warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
+; This program or module is free software: you can redistribute it and/or modify
+; it under the terms of the GNU Affero General Public License as
+; published by the Free Software Foundation, either version 3 of the
+; License, or (at your option) any later version.
+;
+; This program is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU Affero General Public License for more details.
+;
+; You should have received a copy of the GNU Affero General Public License
+; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ; the GNU General Public License for more details.
 ;
 ; AUTHOR
-; Dave Baxter, Marko Luther 2023
+; Dave Baxter, Marko Luther 2023-2026
 ;
 ; .nsi command line options:
 ;    /DPRODUCT_VERSION=ww.xx.yy     -explicitly set the product version, default is 0.0.0
@@ -425,6 +433,8 @@ Section Uninstall
   Delete "$INSTDIR\Humor-Sans.ttf"
   Delete "$INSTDIR\dijkstra.ttf"
   Delete "$INSTDIR\xkcd-script.ttf"
+  Delete "$INSTDIR\Nunito-Regular.ttf"
+  Delete "$INSTDIR\NotoSansMono-Regular.ttf"
   Delete "$INSTDIR\ComicNeue-Regular.ttf"
   Delete "$INSTDIR\WenQuanYiZenHei-01.ttf"
   Delete "$INSTDIR\WenQuanYiZenHeiMonoMedium.ttf"
@@ -456,12 +466,16 @@ Section Uninstall
   Delete "$INSTDIR\bigtext.js"
   Delete "$INSTDIR\sorttable.js"
   Delete "$INSTDIR\report-template.htm"
+  Delete "$INSTDIR\report-template-pdf.htm"
   Delete "$INSTDIR\roast-template.htm"
+  Delete "$INSTDIR\roast-template-pdf.htm"
   Delete "$INSTDIR\ranking-template.htm"
+  Delete "$INSTDIR\ranking-template-pdf.htm"
   Delete "$INSTDIR\jquery-1.11.1.min.js"
   Delete "$INSTDIR\qt.conf"
   Delete "$INSTDIR\vc_redist.x64.exe"
-  Delete "$INSTDIR\logging.yaml"
+  Delete "$INSTDIR\logging.json"
+  Delete "$INSTDIR\artisan_public_key.pem"
 
   SetShellVarContext all
   Delete "$SMPROGRAMS\Artisan\Uninstall.lnk"

@@ -1,3 +1,10 @@
+artisan (4.2.0-1) precise; urgency=low
+  * new upstream release
+  * changes since 4.0.2:
+   - adds support for for ROEST, Orbiter, Pratter, Probat G/UG 2026, Neuhaus Neotec, North Roasters, and the MQTT protocol
+   - bug fixes
+ --  <marko.luther@gmx.net>  Wed, 30 Jun 2026 19:32:14 +0200
+
 artisan (4.0.2-0) precise; urgency=low
   * new upstream release
   * changes since 4.0.0:

@@ -2,11 +2,11 @@
 <component type="desktop-application">
   <id>org.artisan_scope.artisan</id>
 
-  <name>Artisan</name>
+  <name>artisan scope</name>
   <summary>Visual scope for coffee roasters</summary>
 
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>GPL-3.0-only</project_license>
+  <project_license>AGPL-3.0-or-later</project_license>
 
   <supports>
     <control>pointing</control>
@@ -15,29 +15,38 @@
   </supports>
 
   <description>
-    <p>Artisan is an open-source software that helps coffee roasters record, analyze, and control roast profiles. This software can automate the creation of roasting metrics to help make decisions that influence the final coffee flavor.</p>
+    <p>artisan scope is open-source software that helps coffee roasters record, analyze, and control roast profiles. It automates tedious roasting tasks and streamlines processes, enabling roasters to consistently produce exceptional-tasting coffee. With support for over 200 brands of roasting machines, including the capability to control roaster functions, Scope stands out as the most versatile software available to roasters – and it's completely free!</p>
 
-    <p>Notable features</p>
+    <p>**Notable features**</p>
     <ul>
-      <li>we believe in Open-Source, check out our code and contribute</li>
-      <li>seamless integration into the artisan.plus inventory management service</li>
-      <li>extensive machine and device support including control</li>
-      <li>unlimited number of curves</li>
-      <li>rate-of-rise (RoR), area-under-the-curve (AUC), development-time-ratio (DTR) calculations and projection lines</li>
-      <li>statistics, roast profile evaluation, Profile Analyzerg, Roast Comparatorg, Profile Transposerg and Roast Simulatorg</li>
-      <li>roast-, production- and ranking reportsg</li>
-      <li>automated reproduction of roasts via alarm programs, replay of eventsg or PID controlg</li>
-      <li>batch counterg</li>
-      <li>profile designerg, cupping editor, spider- and wheel graph</li>
-      <li>user defined buttons and slidersg with programmable actions</li>
-      <li>many import and export formats like Aillio Roastime, Cropster XLS, Giesen CSV, IKAWA CSV, Probat Pilot, RoastLogger, RoastLog, RoastPath,..</li>
+      <li>Fully open-source under GPLv3</li>
+      <li>Extensive machine and device support, including the ability to control roasters</li>
+      <li>Local-First data management. Your curves live on your machine!</li>
+      <li>Rate-of-rise (RoR), area-under-the-curve (AUC), development-time-ratio (DTR), and projection lines</li>
+      <li>Statistics, Profile Analyzer, Roast Comparator, Profile Transposer, Profile designer, and Roast Simulator</li>
+      <li>Automated reproduction of roasts via replay, alarm programs, or PID control</li>
+      <li>Customizable interface with programmable actions</li>
+      <li>Multiple import and export formats</li>
+      <li>Localized in more than 30 languages</li>
     </ul>
 
-    <p>The Artisan project runs on donations from individuals and companies recognising the value of Artisan for their work or leisure. Consider supporting this project with your donation, or even better, purchase an artisan.plus membership!</p>
+    <p>**More features with the artisan platform**</p>
+
+    <p>Subscribers to our artisan platform unlock access to even more features of artisan scope, including:</p>
+    <ul>
+      <li>Inventory management</li>
+      <li>Roast scheduling with Acaia scale integration</li>
+      <li>RoastGuard automated quality control flagging</li>
+      <li>Production reporting</li>
+      <li>Maintenance reminders</li>
+      <li>Multiple users under one organization  </li>
+    </ul>
+
+    <p>The artisan project runs on donations from individuals and companies recognising the value of artisan for the coffee community. Consider supporting this project with a donation or by purchasing an artisan platform membership!</p>
   </description>
 
   <developer id="org.artisan-scope">
-    <name>Artisan developers</name>
+    <name>artisan</name>
   </developer>
 
   <url type="bugtracker">https://github.com/artisan-roaster-scope/artisan/issues</url>
@@ -50,12 +59,12 @@
   <launchable type="desktop-id">org.artisan_scope.artisan.desktop</launchable>
   <screenshots>
     <screenshot type="default">
-      <image>https://github.com/artisan-roaster-scope/artisan/blob/2c94e7d03f51221771a6f5e10c3a55fd1a26e744/wiki/screenshots/artisan-cover.png?raw=true</image>
-      <caption>Main window of the application</caption>
+      <image>https://raw.githubusercontent.com/artisan-roaster-scope/artisan/eb5d87d6577625ada2a9524a4efa9a1407e4e18b/wiki/screenshots/artisan-cover-linux.png</image>
+      <caption>artisan in light mode roasting</caption>
     </screenshot>
     <screenshot>
-      <image>https://github.com/artisan-roaster-scope/artisan/blob/2c94e7d03f51221771a6f5e10c3a55fd1a26e744/wiki/screenshots/artisan-cover2.png?raw=true</image>
-      <caption>Main window with custom event buttons</caption>
+      <image>https://github.com/artisan-roaster-scope/artisan/blob/eb5d87d6577625ada2a9524a4efa9a1407e4e18b/wiki/screenshots/artisan-cover-linux-dark.png?raw=true</image>
+      <caption>artisan in dark mode displaying a profile</caption>
     </screenshot>
   </screenshots>
 
@@ -70,7 +79,65 @@
 
   <releases>
 
-     <release version="4.0.2" date="2026-02-07">
+     <release version="4.2.0" date="2026-06-30">
+      <url type="details">https://artisan-scope.org/release/Artisan-v4.2/</url>
+      <description>
+        <p>ADDITIONS</p>
+        <ul>
+          <li>adds support for ROEST sample and production roasters</li>
+          <li>adds support for Orbiter smart roasters</li>
+          <li>adds support for Pratter roasting machines</li>
+          <li>adds support for Probat G/UG 2026 models communicating via WebSockets</li>
+          <li>adds support for Neuhaus Neotec RFB Junior, RFB-S and Neoroast machines</li>
+          <li>adds support for North Roasters</li>
+          <li>adds support for Schuilenburg machines equipped with Unitronics PLC</li>
+          <li>adds MQTT support</li>
+          <li>adds IO Command publish(topic, data) to publish payloads to the connected MQTT broker</li>
+          <li>adds Artisan Command pidSVbuttons(bool) (Issue #2121)</li>
+          <li>adds Excel and Orbiter formats to the autosave "save also" options</li>
+          <li>adds Bulgarian localization (Issue #2175)</li>
+          <li>adds validation of profiles and settings</li>
+          <li>adds PID derivative filter size setting</li>
+          <li>adds option to disable UNDO actions on main event buttons</li>
+          <li>adds ALT/OPTION click on template name to toggle event replay</li>
+          <li>adds notification message if schedule fails to load template</li>
+        </ul>
+        <p>CHANGES</p>
+        <ul>
+          <li>added a popup explaining the reason the Roast Properties dialog is opened on START if plus is connected until beans are specified  (Issue #2133)</li>
+          <li>adds hack to prevent dtr/rts signaling on connecting serial ports</li>
+          <li>preserves weight/volume unit setup on loading/importing profiles</li>
+          <li>enables extra device curve fills on recording</li>
+          <li>timer LCD displays cooling time after DROP</li>
+          <li>enables title click to open Roast Properties also during sampling and recording</li>
+          <li>tooltip on scheduler item displays weight of all blend components in selected weight unit (thanks to HB:Theophilus for reporting)</li>
+          <li>deactivates shortcut key J to toggle event replay to avoid the danger of activating it accidentally</li>
+          <li>connects scale LCDs directly to scale 1 and 2</li>
+        </ul>
+        <p>FIXES</p>
+        <ul>
+          <li>fixes autosave as PDF on regular `Save` on macOS (Issue #2118)</li>
+          <li>fixes regression which led to large automatic x-axis extensions for larger sampling rates (Issue #2142)</li>
+          <li>fixes issue w.r.t. alarm set activations which could cause alarm table to be lost on re-opening the Alarms dialog in some cases (Issue #2144)</li>
+          <li>prevents undo of main events for events triggered from alarm rule actions or custom event button actions (Issue #2157)</li>
+          <li>fixes regression that prevented to set the p-i-d parameters on external MODBUS PIDs (Issue #2159)</li>
+          <li>fixes regression where Iterm of the internal PID did not get reset between roasts (thanks Peter for reporting!)</li>
+          <li>fixes a regression in the software PID calculation of the Dterm (thanks Peter for reporting!)</li>
+          <li>fixes long standing regression which broke the Rubasse importer (Issue #1958)</li>
+          <li>fixes a typo in the Petronciini TT i06 Avantgarde machine setup which prevented the Airflow and DrumSpeed to be rendered correctly</li>
+          <li>improves the endian label in MODBUS dialog (Issue #2174)</li>
+          <li>adds explicit `clear settings` on Factory Reset to prevent issues on migrating from releases before v4 (Issue #2173)</li>
+          <li>improving robustness of profile loading w.r.t. unknown devices</li>
+          <li>enables keypad number keys to update event slider values (thanks Balázs for the hint!)</li>
+        </ul>
+        <p>REMOVALS</p>
+        <ul>
+          <li>removes RoastTime, RoastPath and Probat Pilot import/exports</li>
+        </ul>
+      </description>
+    </release>
+
+    <release version="4.0.2" date="2026-02-07">
       <url type="details">https://github.com/artisan-roaster-scope/artisan/releases/tag/v4.0.2</url>
       <description>
         <p>CHANGES</p>

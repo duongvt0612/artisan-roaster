@@ -1,17 +1,27 @@
 #
 # ABOUT
-# Aillio support for Artisan
+# Aillio support for artisan scope
 
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
 # LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
-
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
 # AUTHOR
 # Rui Paulo, 2023
 
@@ -24,15 +34,15 @@ from multiprocessing import Pipe
 from platform import system
 from collections.abc import Generator
 
-import usb.core # type: ignore[import-untyped] # ty:ignore[ignore]
-import usb.util # type: ignore[import-untyped] # ty:ignore[ignore]
+import usb.core # type: ignore[import-untyped]
+import usb.util # type: ignore[import-untyped] # zuban: ignore[no-redef]
 
 
 if system().startswith('Windows'):
-    import libusb_package # pyright:ignore[reportMissingImports] # pylint: disable=import-error # ty:ignore[unresolved-import]
+    import libusb_package # type:ignore [import-not-found, unused-ignore] # pyright:ignore[reportMissingImports] # pylint: disable=import-error
 
 #import requests
-#from requests_file import FileAdapter # type: ignore # @UnresolvedImport # ty:ignore[ignore]
+#from requests_file import FileAdapter # @UnresolvedImport
 #import json
 #from lxml import html # unused
 
@@ -41,16 +51,16 @@ from typing import Final, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     try:
-        from multiprocessing.connection import PipeConnection as Connection # type: ignore[unused-ignore,attr-defined,assignment] # ty:ignore[ignore] # pylint: disable=unused-import
+        from multiprocessing.connection import PipeConnection as Connection # type: ignore[unused-ignore,attr-defined,assignment] # pylint: disable=unused-import
     except ImportError:
-        from multiprocessing.connection import Connection # type: ignore[unused-ignore,attr-defined,assignment] # ty:ignore[ignore] # pylint: disable=unused-import
+        from multiprocessing.connection import Connection # type: ignore[unused-ignore,attr-defined,assignment] # pylint: disable=unused-import
 
 
 _log: Final[logging.Logger] = logging.getLogger(__name__)
 
 
 def _load_library(find_library:Any = None) -> Any:
-    import usb.libloader # type: ignore[import-untyped, unused-ignore] # ty:ignore[ignore] # pylint: disable=redefined-outer-name
+    import usb.libloader # type: ignore[import-untyped, unused-ignore] # pylint: disable=redefined-outer-name
     return usb.libloader.load_locate_library(
                 ('usb-1.0', 'libusb-1.0', 'usb'),
                 'cygusb-1.0.dll', 'Libusb 1',
@@ -85,7 +95,7 @@ class AillioR1:
         self.simulated = False
         self.AILLIO_DEBUG = debug
         self.__dbg('init')
-        self.usbhandle:Generator[usb.core.Device, Any, None]|usb.core.Device|None = None # type:ignore[no-any-unimported,unused-ignore] # ty:ignore[ignore]
+        self.usbhandle:Generator[usb.core.Device, Any, None]|usb.core.Device|None = None # type:ignore[no-any-unimported,unused-ignore]
         self.bt:float = 0
         self.dt:float = 0
         self.heater:float = 0
@@ -101,8 +111,8 @@ class AillioR1:
         self.roast_number:int = -1
         self.fan_rpm:float = 0
 
-        self.parent_pipe:Connection|None = None # type:ignore[no-any-unimported,unused-ignore] # ty:ignore[ignore]
-        self.child_pipe:Connection|None = None # type:ignore[no-any-unimported,unused-ignore] # ty:ignore[ignore]
+        self.parent_pipe:Connection|None = None # type:ignore[no-any-unimported,unused-ignore]
+        self.child_pipe:Connection|None = None # type:ignore[no-any-unimported,unused-ignore]
         self.irt:float = 0
         self.pcbt:float = 0
         self.coil_fan:int = 0
@@ -144,9 +154,9 @@ class AillioR1:
                         '/usr/lib/aarch64-linux-gnu/libusb-1.0.so'
                         '/usr/lib/aarch64-linux-gnu/libusb-1.0.so.0']:
                     if os.path.isfile(shared_libusb_path):
-                        import usb.backend.libusb1 as libusb10 # type: ignore[import-untyped, unused-ignore] # ty:ignore[ignore]
+                        import usb.backend.libusb1 as libusb10 # type: ignore[import-untyped, unused-ignore]
                         libusb10._load_library = _load_library # pylint: disable=protected-access # overwrite the overwrite of the pyinstaller runtime hook pyi_rth_usb.py
-                        from usb.backend.libusb1 import get_backend  # type: ignore[import-untyped, unused-ignore] # ty:ignore[ignore]
+                        from usb.backend.libusb1 import get_backend  # type: ignore[import-untyped, unused-ignore]
                         backend = get_backend(find_library=lambda _,shared_libusb_path=shared_libusb_path: shared_libusb_path)
                         break
             self.usbhandle = usb.core.find(idVendor=self.AILLIO_VID,
@@ -165,18 +175,18 @@ class AillioR1:
         if isinstance(self.usbhandle, Generator): # pyrefly:ignore[invalid-argument,unsafe-overlap]
             raise OSError('Generator not supported')
         self.__dbg('device found!')
-        if not system().startswith('Windows') and self.usbhandle.is_kernel_driver_active(self.AILLIO_INTERFACE):
+        if not system().startswith('Windows') and self.usbhandle.is_kernel_driver_active(self.AILLIO_INTERFACE): # type:ignore[union-attr, unused-ignore]
             try:
-                self.usbhandle.detach_kernel_driver(self.AILLIO_INTERFACE)
+                self.usbhandle.detach_kernel_driver(self.AILLIO_INTERFACE) # type:ignore[union-attr, unused-ignore]
             except Exception: # pylint: disable=broad-except
                 pass
                 # detach fails on libusb 1.0.26 and newer on macOS >v12 if not running under sudo and seems not to be needed on those configurations
 #                self.usbhandle = None
 #                raise OSError('unable to detach kernel driver') from e
         try:
-            config = self.usbhandle.get_active_configuration()
+            config = self.usbhandle.get_active_configuration() # type:ignore[union-attr, unused-ignore]
             if config is not None and config.bConfigurationValue != self.AILLIO_CONFIGURATION: # pyright:ignore[reportAttributeAccessIssue]
-                self.usbhandle.set_configuration(configuration=self.AILLIO_CONFIGURATION)
+                self.usbhandle.set_configuration(configuration=self.AILLIO_CONFIGURATION) # type:ignore[union-attr, unused-ignore]
         except Exception as e:  # pylint: disable=broad-except
             self.usbhandle = None
             raise OSError('unable to configure') from e
@@ -340,7 +350,7 @@ class AillioR1:
         if cmd == 'prs':
             self.prs()
 
-    def __updatestate(self, p:'Connection') -> None: # type:ignore[no-any-unimported,unused-ignore] # ty:ignore[ignore]
+    def __updatestate(self, p:'Connection') -> None: # type:ignore[no-any-unimported,unused-ignore]
         while self.worker_thread_run:
             state1:array.array[int] = array.array('B', bytes(0)) # pylint: disable=unsubscriptable-object
             state2:array.array[int] = array.array('B', bytes(0)) # pylint: disable=unsubscriptable-object
@@ -385,26 +395,26 @@ class AillioR1:
         if self.parent_pipe is None or not self.parent_pipe.poll():
             return
         state = self.parent_pipe.recv()
-        valid = state[41]        # type:ignore[reportIndexIssue, unused-ignore] # ty:ignore[ignore]
+        valid = state[41]        # type:ignore[reportIndexIssue, unused-ignore]
         # Heuristic to find out if the data is valid
         # It looks like we get a different message every 15 seconds
         # when we're not roasting.  Ignore this message for now.
         if valid == 10:
-            self.bt = round(unpack('f', state[0:4])[0], 1)      # type:ignore[reportIndexIssue, unused-ignore] # ty:ignore[ignore]
-            self.bt_ror = round(unpack('f', state[4:8])[0], 1)  # type:ignore[reportIndexIssue, unused-ignore] # ty:ignore[ignore]
-            self.dt = round(unpack('f', state[8:12])[0], 1)     # type:ignore[reportIndexIssue, unused-ignore] # ty:ignore[ignore]
-            self.exitt = round(unpack('f', state[16:20])[0], 1) # type:ignore[reportIndexIssue, unused-ignore] # ty:ignore[ignore]
-            self.minutes = state[24]   # type:ignore[reportIndexIssue, unused-ignore] # ty:ignore[ignore]
-            self.seconds = state[25]   # type:ignore[reportIndexIssue, unused-ignore] # ty:ignore[ignore]
-            self.fan = state[26]       # type:ignore[reportIndexIssue, unused-ignore] # ty:ignore[ignore]
-            self.heater = state[27]    # type:ignore[reportIndexIssue, unused-ignore] # ty:ignore[ignore]
-            self.drum = state[28]      # type:ignore[reportIndexIssue, unused-ignore] # ty:ignore[ignore]
-            self.r1state = state[29]   # type:ignore[reportIndexIssue, unused-ignore] # ty:ignore[ignore]
-            self.irt = round(unpack('f', state[32:36])[0], 1)  # type:ignore[reportIndexIssue, unused-ignore] # ty:ignore[ignore]
-            self.pcbt = round(unpack('f', state[36:40])[0], 1) # type:ignore[reportIndexIssue, unused-ignore] # ty:ignore[ignore]
-            self.fan_rpm = unpack('h', state[44:46])[0]        # type:ignore[reportIndexIssue, unused-ignore] # ty:ignore[ignore]
-            self.voltage = unpack('h', state[48:50])[0]        # type:ignore[reportIndexIssue, unused-ignore] # ty:ignore[ignore]
-            self.coil_fan = round(unpack('i', state[52:56])[0], 1) # type:ignore[reportIndexIssue, unused-ignore] # ty:ignore[ignore]
+            self.bt = round(unpack('f', state[0:4])[0], 1)      # type:ignore[reportIndexIssue, unused-ignore]
+            self.bt_ror = round(unpack('f', state[4:8])[0], 1)  # type:ignore[reportIndexIssue, unused-ignore]
+            self.dt = round(unpack('f', state[8:12])[0], 1)     # type:ignore[reportIndexIssue, unused-ignore]
+            self.exitt = round(unpack('f', state[16:20])[0], 1) # type:ignore[reportIndexIssue, unused-ignore]
+            self.minutes = state[24]   # type:ignore[reportIndexIssue, unused-ignore]
+            self.seconds = state[25]   # type:ignore[reportIndexIssue, unused-ignore]
+            self.fan = state[26]       # type:ignore[reportIndexIssue, unused-ignore]
+            self.heater = state[27]    # type:ignore[reportIndexIssue, unused-ignore]
+            self.drum = state[28]      # type:ignore[reportIndexIssue, unused-ignore]
+            self.r1state = state[29]   # type:ignore[reportIndexIssue, unused-ignore]
+            self.irt = round(unpack('f', state[32:36])[0], 1)  # type:ignore[reportIndexIssue, unused-ignore]
+            self.pcbt = round(unpack('f', state[36:40])[0], 1) # type:ignore[reportIndexIssue, unused-ignore]
+            self.fan_rpm = unpack('h', state[44:46])[0]        # type:ignore[reportIndexIssue, unused-ignore]
+            self.voltage = unpack('h', state[48:50])[0]        # type:ignore[reportIndexIssue, unused-ignore]
+            self.coil_fan = round(unpack('i', state[52:56])[0], 1) # type:ignore[reportIndexIssue, unused-ignore]
             self.__dbg('BT: ' + str(self.bt))
             self.__dbg('BT RoR: ' + str(self.bt_ror))
             self.__dbg('DT: ' + str(self.dt))
@@ -418,9 +428,9 @@ class AillioR1:
             self.__dbg(f'drum speed: {self.drum}')
             self.__dbg('time: {self.minutes}:{self.seconds}')
 
-        state = state[64:]         # type:ignore[reportIndexIssue, unused-ignore] # ty:ignore[ignore]
-        self.coil_fan2 = round(unpack('i', state[32:36])[0], 1) # type:ignore[reportIndexIssue, unused-ignore] # ty:ignore[ignore]
-        self.pht = unpack('H', state[40:42])[0] # type:ignore[reportIndexIssue, unused-ignore] # ty:ignore[ignore]
+        state = state[64:]         # type:ignore[reportIndexIssue, unused-ignore]
+        self.coil_fan2 = round(unpack('i', state[32:36])[0], 1) # type:ignore[reportIndexIssue, unused-ignore]
+        self.pht = unpack('H', state[40:42])[0] # type:ignore[reportIndexIssue, unused-ignore]
         self.__dbg('pre-heat temperature: ' + str(self.pht))
         if self.r1state == self.AILLIO_STATE_OFF:
             self.state_str = 'off'
@@ -440,11 +450,11 @@ class AillioR1:
     def __sendcmd(self, cmd:list[int]) -> None:
         self.__dbg('sending command: ' + str(cmd))
         if self.usbhandle is not None and not isinstance(self.usbhandle, Generator): # pyrefly:ignore[invalid-argument,unsafe-overlap]
-            self.usbhandle.write(self.AILLIO_ENDPOINT_WR, cmd) # ty: ignore[possibly-missing-attribute]
+            self.usbhandle.write(self.AILLIO_ENDPOINT_WR, cmd) # type: ignore[union-attr, unused-ignore]
 
     def __readreply(self, length:int) -> Any:
         if self.usbhandle is not None and not isinstance(self.usbhandle, Generator): # pyrefly:ignore[invalid-argument,unsafe-overlap]
-            return self.usbhandle.read(self.AILLIO_ENDPOINT_RD, length) # ty: ignore[possibly-missing-attribute]
+            return self.usbhandle.read(self.AILLIO_ENDPOINT_RD, length) # type: ignore[union-attr, unused-ignore]
         raise OSError('not found or no permission')
 
 #def extractProfileBulletDict(data:Dict, aw:'ApplicationWindow') -> 'ProfileData':

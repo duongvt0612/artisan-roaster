@@ -1,25 +1,31 @@
 #
 # controller.py
 #
-# Copyright (c) 2023, Paul Holleis, Marko Luther
-# All rights reserved.
-#
-#
 # ABOUT
-# This module connects to the artisan.plus inventory management service
-
-# LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
+# This module connects to the artisan platform
 #
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
+# LICENSE
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
+# AUTHOR
+# Marko Luther
 
 from PyQt6.QtCore import QSemaphore, QTimer, Qt, pyqtSlot
 from PyQt6.QtWidgets import QApplication, QMessageBox
@@ -150,16 +156,7 @@ def connect(clear_on_failure: bool =False, interactive: bool = True) -> None:
         try:
             connect_semaphore.acquire(1)
             if aw is not None:
-
-#                if platform.system().startswith('Windows'):
-#                    import keyring.backends.Windows  # @UnusedImport
-#                elif platform.system() == 'Darwin':
-#                    import keyring.backends.macOS  # @UnusedImport @UnresolvedImport
-#                else:
-#                    import keyring.backends.SecretService  # @UnusedImport
                 import keyring  # @Reimport # imported last to make py2app work
-
-#                connection.setKeyring()
                 account = aw.plus_account
                 if account is None:
                     account = aw.plus_email
@@ -246,7 +243,7 @@ def connect(clear_on_failure: bool =False, interactive: bool = True) -> None:
                         )  # @UndefinedVariable
                         aw.sendmessageSignal.emit(
                             QApplication.translate(
-                                'Plus', 'Connected to artisan.plus'
+                                'Plus', 'Connected to the artisan platform'
                             ),
                             True,
                             None,
@@ -265,7 +262,7 @@ def connect(clear_on_failure: bool =False, interactive: bool = True) -> None:
                         connection.clearRememberedSession(aw.plus_email)
                         aw.sendmessageSignal.emit(
                             QApplication.translate(
-                                'Plus', 'artisan.plus turned off'
+                                'Plus', 'artisan platform disconnected'
                             ),
                             True,
                             None,
@@ -275,9 +272,10 @@ def connect(clear_on_failure: bool =False, interactive: bool = True) -> None:
                         message = QApplication.translate(
                             'Plus', 'Authentication failed'
                         )
-                        message = (
-                            f'{aw.plus_account} {message}'
-                        )  # @UndefinedVariable
+                        if aw.plus_account is not None: # pyright:ignore[reportUnnecessaryComparison] # pyright infers type str here, which is wrong!
+                            message = (
+                                f'{aw.plus_account} {message}'
+                            )  # @UndefinedVariable
                         aw.sendmessageSignal.emit(
                             message, True, None
                         )  # @UndefinedVariable
@@ -290,7 +288,7 @@ def connect(clear_on_failure: bool =False, interactive: bool = True) -> None:
                 if interactive and aw is not None:
                     aw.sendmessageSignal.emit(
                         QApplication.translate(
-                            'Plus', 'artisan.plus turned off'
+                            'Plus', 'artisan platform disconnected'
                         ),
                         True,
                         None,
@@ -299,7 +297,7 @@ def connect(clear_on_failure: bool =False, interactive: bool = True) -> None:
                 if interactive:
                     aw.sendmessageSignal.emit(
                         QApplication.translate(
-                            'Plus', "Couldn't connect to artisan.plus"
+                            'Plus', "Couldn't connect to the artisan platform"
                         ),
                         True,
                         None,
@@ -322,11 +320,13 @@ def connect(clear_on_failure: bool =False, interactive: bool = True) -> None:
 
 
 # show a dialog to have the user confirm the disconnect action
+# NOTE: adding a stylesheet to the QApplication referts this to a Qt dialog instead of native dialogs again
 def disconnect_confirmed() -> bool:
-    string = QApplication.translate('Plus', 'Disconnect artisan.plus?')
+    string = QApplication.translate('Plus', 'Disconnect?')
     mbox = QMessageBox()
     mbox.setText(string)
-    util.setPlusIcon(mbox)
+    if config.app_window is not None:
+        util.setPlusIcon(mbox, config.app_window.app.darkmode)
     mbox.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
     res = mbox.exec()
     return QMessageBox.StandardButton.Yes == res
@@ -365,7 +365,7 @@ def disconnect(
                 if remove_credentials:
                     aw.sendmessageSignal.emit(
                         QApplication.translate(
-                            'Plus', 'artisan.plus turned off'
+                            'Plus', 'artisan platform disconnected'
                         ),
                         True,
                         None,
@@ -374,18 +374,18 @@ def disconnect(
                     aw.sendmessageSignal.emit(
                         (
                         QApplication.translate(
-                            'Plus', 'artisan.plus connection lost. Reconnecting automatically...'
+                            'Plus', 'Connection to the artisan platform lost. Reconnecting automatically...'
                         )
                         if keepON else
                         QApplication.translate(
-                            'Plus', 'artisan.plus disconnected'
+                            'Plus', 'artisan platform disconnected'
                         )),
                         True,
                         None,
                     )
             if stop_queue:
                 queue.stop()  # stop the outbox queue
-            _log.info('artisan.plus disconnected')
+            _log.info('artisan platform disconnected')
         finally:
             if connect_semaphore.available() < 1:
                 connect_semaphore.release(1)
@@ -399,7 +399,7 @@ def reconnected() -> None:
         try:
             connect_semaphore.acquire(1)
             config.connected = True
-            _log.info('artisan.plus reconnected')
+            _log.info('artisan platform reconnected')
         finally:
             if connect_semaphore.available() < 1:
                 connect_semaphore.release(1)
@@ -411,7 +411,7 @@ def reconnected() -> None:
             if aw is not None:
                 aw.sendmessageSignal.emit(
                     QApplication.translate(
-                        'Plus', 'artisan.plus reconnected'),
+                        'Plus', 'artisan platform reconnected'),
                     True,
                     None)
 

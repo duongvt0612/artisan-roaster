@@ -1,17 +1,27 @@
 #
 # ABOUT
-# Artisan Template Background Dialog
-
+# artisan scope template background dialog
+#
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
 # LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
-
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
 # AUTHOR
 # Marko Luther, 2023
 
@@ -22,6 +32,8 @@ from artisanlib.main import UI_MODE
 from artisanlib.util import deltaLabelUTF8, deltaLabelPrefix, stringfromseconds
 from artisanlib.dialogs import ArtisanResizeablDialog
 from artisanlib.widgets import (MyTableWidgetItemNumber)
+from artisanlib.table_style import horizontal_header_style, vertical_header_style
+
 from typing import override, Final, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -175,6 +187,13 @@ class backgroundDlg(ArtisanResizeablDialog):
         #TAB 2 EVENTS
         #table for showing events
         self.eventtable = QTableWidget()
+        horizontal_header = self.eventtable.horizontalHeader()
+        if horizontal_header is not None:
+            horizontal_header.setStyleSheet(horizontal_header_style(self.aw.app.darkmode))
+        vertical_header = self.eventtable.verticalHeader()
+        if vertical_header is not None:
+            vertical_header.setStyleSheet(vertical_header_style(self.aw.app.darkmode))
+            vertical_header.setDefaultAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
         self.eventtable.setTabKeyNavigation(True)
         self.copyeventTableButton = QPushButton(QApplication.translate('Button', 'Copy Table'))
         self.copyeventTableButton.setToolTip(QApplication.translate('Tooltip','Copy table to clipboard, OPTION or ALT click for tabular text'))
@@ -185,6 +204,13 @@ class backgroundDlg(ArtisanResizeablDialog):
         #TAB 3 DATA
         #table for showing data
         self.datatable = QTableWidget()
+        horizontal_header = self.datatable.horizontalHeader()
+        if horizontal_header is not None:
+            horizontal_header.setStyleSheet(horizontal_header_style(self.aw.app.darkmode))
+        vertical_header = self.datatable.verticalHeader()
+        if vertical_header is not None:
+            vertical_header.setStyleSheet(vertical_header_style(self.aw.app.darkmode))
+            vertical_header.setDefaultAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
         self.datatable.setTabKeyNavigation(True)
         self.copydataTableButton = QPushButton(QApplication.translate('Button', 'Copy Table'))
         self.copydataTableButton.setToolTip(QApplication.translate('Tooltip','Copy table to clipboard, OPTION or ALT click for tabular text'))
@@ -862,7 +888,7 @@ class backgroundDlg(ArtisanResizeablDialog):
             return
         self.aw.sendmessage(QApplication.translate('Message','Reading background profile...'))
         self.aw.qmc.resetlinecountcaches()
-        self.aw.loadbackground(self.filename)
+        self.aw.loadbackground(self.filename, quiet=False)
 
         # reset XT curve popup
         curvenames = [''] # first entry is the empty one (no extra curve displayed)

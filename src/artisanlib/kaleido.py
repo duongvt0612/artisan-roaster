@@ -1,17 +1,27 @@
 #
 # ABOUT
-# Kaleido support for Artisan
-
+# Kaleido support for artisan scope
+#
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
 # LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later versison. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
-
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
 # AUTHOR
 # Marko Luther, 2023
 
@@ -62,11 +72,11 @@ class KaleidoPort:
         self._default_data_stream:Final[str] = 'A0'
         self._open_timeout:Final[float] = 6      # in seconds
         self._init_timeout:Final[float] = 6      # in seconds
-        self._ping_timeout:Final[float] = 0.8    # in seconds
-        self._send_timeout:Final[float] = 0.4    # in seconds
-        self._read_timeout:Final[float] = 4      # in seconds
+        self._ping_timeout:Final[float] = 1.2    # in seconds
+        self._send_timeout:Final[float] = 0.6    # in seconds
+        self._read_timeout:Final[float] = 5      # in seconds
         self._ping_retry_delay:Final[float] = 1  # in seconds
-        self._reconnect_delay:Final[float] = 0.2 # in seconds
+        self._reconnect_delay:Final[float] = 0.5 # in seconds
 
         self.send_button_timeout:Final[float] = 1.2  # in seconds
 
@@ -164,7 +174,7 @@ class KaleidoPort:
     # returns the current state of the given var or None (for sid/TU/SC/CL) and -1 (otherwise) if the state is unknown
     def get_state(self, var:str) -> str|int|float|None:
         if var in self._state:
-            return self._state[var] # type: ignore[literal-required, no-any-return] # TypedDict key must be a string literal
+            return self._state[var] # type: ignore[literal-required, no-any-return, misc, unused-ignore] # TypedDict key must be a string literal
         if var in {'sid', 'TU', 'SC', 'CL', 'SN'}:
             return None
         if self.intVar(var):
@@ -180,15 +190,15 @@ class KaleidoPort:
     # if single_res is True we assume the state is set from a single var/value pair response and thus we clear the var prefixed by _single_await_var_prefix
     async def set_state(self, var:str, value:str, single_res:bool) -> None:
         if self.intVar(var):
-            self._state[var] = int(round(float(value))) # type: ignore[literal-required] # TypedDict key must be a string literal
+            self._state[var] = int(round(float(value))) # type: ignore[literal-required, misc, unused-ignore] # TypedDict key must be a string literal
         elif self.strVar(var):
-            self._state[var] = value # type: ignore[literal-required] # TypedDict key must be a string literal
+            self._state[var] = value # type: ignore[literal-required, misc, unused-ignore] # TypedDict key must be a string literal
         else:
             try:
-                self._state[var] = float(value) # type: ignore[literal-required] # TypedDict key must be a string literal
+                self._state[var] = float(value) # type: ignore[literal-required, misc, unused-ignore] # TypedDict key must be a string literal
             except Exception: # pylint: disable=broad-except
                 # if conversion to a float failed (maybe an unknown tag), we still keep the reading as original string
-                self._state[var] = value # type: ignore[literal-required] # TypedDict key must be a string literal
+                self._state[var] = value # type: ignore[literal-required, misc, unused-ignore] # TypedDict key must be a string literal
         clear_var = var
         if single_res:
             # value received by a response with a single var/value pair thus we clear the prefixed variable

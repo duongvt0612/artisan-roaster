@@ -1,17 +1,27 @@
 #
 # ABOUT
-# Artisan Notification System
-
+# artisan scope notification aystem
+#
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
 # LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
-
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
 # AUTHOR
 # Marko Luther, 2023
 
@@ -125,12 +135,14 @@ def sendPlusNotificationSeen(hr_id:str, date:datetime.datetime) -> None:
 
 class NotificationManager(QObject):
 
-    __slots__ = ( 'notification_timeout', 'notification_queue_max_length', 'notification_queue_max_age',
+    __slots__ = ( 'tray_icon_configured', 'notification_timeout', 'notification_queue_max_length', 'notification_queue_max_age',
                 'tray_menu', 'tray_icon', 'notifications_available', 'notifications_enabled', 'notifications_visible',
                 'notifications_queue', 'active_notification', 'notification_menu_actions' )
 
     def __init__(self) -> None:
         super().__init__()
+
+        self.tray_icon_configured:bool = False
 
         # time to display a notification
         self.notification_timeout: Final = 12000 # 6000 # in ms
@@ -156,12 +168,14 @@ class NotificationManager(QObject):
         self.active_notification:Notification|None = None
 
     def configTrayIcon(self) -> None:
-        # the tray icon is displayed only if notifications are supported by the system
-        self.tray_icon.setIcon(self.artisanTrayIcon())
-        self.tray_icon.setToolTip('Artisan Notifications')
-        self.tray_icon.messageClicked.connect(self.messageClicked)
-        #self.tray_icon.show() # if try_icon is not visible, notifications are not delivered
-        self.tray_icon.setContextMenu(self.tray_menu)
+        if not self.tray_icon_configured:
+            # the tray icon is displayed only if notifications are supported by the system
+            self.tray_icon.setIcon(self.artisanTrayIcon())
+            self.tray_icon.setToolTip('Artisan Notifications')
+            self.tray_icon.messageClicked.connect(self.messageClicked)
+            #self.tray_icon.show() # if try_icon is not visible, notifications are not delivered
+            self.tray_icon.setContextMenu(self.tray_menu)
+            self.tray_icon_configured = True
 
     @staticmethod
     def artisanTrayIcon() -> QIcon:
@@ -177,21 +191,23 @@ class NotificationManager(QObject):
     # returns the plus icon as QIcon
     @staticmethod
     def notificationPlusIcon() -> QIcon:
-        basedir = os.path.join(getResourcePath(),'Icons')
-        if sys.platform.startswith('darwin'):
-            p = os.path.join(basedir, 'plus-notification.png')
-        else:
-            p = os.path.join(basedir, 'plus-notification.svg')
-        return QIcon(p)
+        return NotificationManager.notificationArtisanIcon()
+#        basedir = os.path.join(getResourcePath(),'Icons')
+#        if sys.platform.startswith('darwin'):
+#            p = os.path.join(basedir, 'plus-notification.png')
+#        else:
+#            p = os.path.join(basedir, 'plus-notification.svg')
+#        return QIcon(p)
 
     # returns the Artisan icon as QIcon
     @staticmethod
     def notificationArtisanIcon() -> QIcon:
         basedir = os.path.join(getResourcePath(),'Icons')
-        if sys.platform.startswith('darwin'):
-            p = os.path.join(basedir, 'artisan-notification.png')
-        else:
-            p = os.path.join(basedir, 'artisan-notification.svg')
+#        if sys.platform.startswith('darwin'):
+#            p = os.path.join(basedir, 'artisan-notification.png')
+#        else:
+#            p = os.path.join(basedir, 'artisan-notification.svg')
+        p = os.path.join(basedir, 'artisan-notification.svg')
         return QIcon(p)
 
     @pyqtSlot()
@@ -228,12 +244,16 @@ class NotificationManager(QObject):
         except Exception as e: # pylint: disable=broad-except
             _log.exception(e)
 
+    def show_tray_icon(self) -> None:
+        self.configTrayIcon()
+        self.tray_icon.show()
+
     def showNotifications(self) -> None:
         try:
             if self.notifications_available:
                 self.notifications_visible = True
                 if len(self.notifications_queue)>0:
-                    self.tray_icon.show()
+                    self.show_tray_icon()
                     self.updateNotificationMenu()
         except Exception as e: # pylint: disable=broad-except
             _log.exception(e)
@@ -291,7 +311,7 @@ class NotificationManager(QObject):
             self.tray_menu.clear()
             self.notification_menu_actions = []
             if len(self.notifications_queue)>0 and self.notifications_visible:
-                self.tray_icon.show()
+                self.show_tray_icon()
 
                 for n in reversed(self.notifications_queue):
                     title = n.formatedTitle()
@@ -325,7 +345,7 @@ class NotificationManager(QObject):
                     NotificationType.PLUS_SYSTEM,
                     NotificationType.PLUS_REMINDER,
                     NotificationType.PLUS_ADMIN,
-                    NotificationType.PLUS_ADMIN]:
+                    NotificationType.PLUS_ADVERT]:
                 icon = self.notificationPlusIcon()
             self.tray_icon.showMessage(notification.formatedTitle(), notification.message, icon, self.notification_timeout)
         except Exception as e: # pylint: disable=broad-except

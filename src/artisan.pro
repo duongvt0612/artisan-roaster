@@ -1,16 +1,24 @@
-# The project file for the Artisan application.
+# The project file for the artisan scope application.
+#
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
 #
 # LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
 #
-# This file is part of Artisan.
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
 
 # not sure if the following is strictly needed (might be needed for accent characters in source of translations)
 CODECFORSRC = UTF-8
@@ -64,6 +72,7 @@ SOURCES = \
     help/eventsliders_help.py \
     help/keyboardshortcuts_help.py \
     help/modbus_help.py \
+    help/mqtt_help.py \
     help/programs_help.py \
     help/s7_help.py \
     help/symbolic_help.py \
@@ -79,34 +88,35 @@ SOURCES = \
 
 # the list of translation has to be synced with the script pylupdate6pro (for pylupdate6)
 TRANSLATIONS = \
-	translations/artisan_ar.ts \
-	translations/artisan_cs.ts \
-	translations/artisan_da.ts \
-	translations/artisan_de.ts \
-	translations/artisan_el.ts \
-	translations/artisan_es.ts \
-	translations/artisan_fa.ts \
-	translations/artisan_fi.ts \
-	translations/artisan_fr.ts \
-	translations/artisan_gd.ts \
-	translations/artisan_he.ts \
-	translations/artisan_hu.ts \
-	translations/artisan_id.ts \
-	translations/artisan_it.ts \
-	translations/artisan_ja.ts \
-	translations/artisan_ko.ts \
-	translations/artisan_lv.ts \
-	translations/artisan_nl.ts \
-	translations/artisan_no.ts \
-	translations/artisan_pl.ts \
-	translations/artisan_pt_BR.ts \
-	translations/artisan_pt.ts \
-	translations/artisan_ru.ts \
-	translations/artisan_sk.ts \
-	translations/artisan_sv.ts \
-	translations/artisan_th.ts \
-	translations/artisan_tr.ts \
-	translations/artisan_uk.ts \
-	translations/artisan_vi.ts \
-	translations/artisan_zh_CN.ts \
-	translations/artisan_zh_TW.ts
+    translations/artisan_ar.ts \
+    translations/artisan_bg.ts \
+    translations/artisan_cs.ts \
+    translations/artisan_da.ts \
+    translations/artisan_de.ts \
+    translations/artisan_el.ts \
+    translations/artisan_es.ts \
+    translations/artisan_fa.ts \
+    translations/artisan_fi.ts \
+    translations/artisan_fr.ts \
+    translations/artisan_gd.ts \
+    translations/artisan_he.ts \
+    translations/artisan_hu.ts \
+    translations/artisan_id.ts \
+    translations/artisan_it.ts \
+    translations/artisan_ja.ts \
+    translations/artisan_ko.ts \
+    translations/artisan_lv.ts \
+    translations/artisan_nl.ts \
+    translations/artisan_no.ts \
+    translations/artisan_pl.ts \
+    translations/artisan_pt_BR.ts \
+    translations/artisan_pt.ts \
+    translations/artisan_ru.ts \
+    translations/artisan_sk.ts \
+    translations/artisan_sv.ts \
+    translations/artisan_th.ts \
+    translations/artisan_tr.ts \
+    translations/artisan_uk.ts \
+    translations/artisan_vi.ts \
+    translations/artisan_zh_CN.ts \
+    translations/artisan_zh_TW.ts

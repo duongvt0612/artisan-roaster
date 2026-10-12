@@ -1,20 +1,31 @@
 #
 # ABOUT
-# # Lebrew Roast See NEXT BLE support for Artisan
-
+# Lebrew Roast See NEXT BLE support for artisan scope
+#
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
 # LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later versison. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
-
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
 # AUTHOR
 # Marko Luther, 2025
 
+import time
 import re
 import asyncio
 import logging
@@ -34,6 +45,7 @@ class Lebrew_RoastSeeNEXT_BLE(ClientBLE):
     LEBREW_RoastSeeNEXT_Name:Final[str] = 'RoastSeeNEXT'
     LEBREW_RoastSeeNEXT_UUID:Final[str] = '000000bb-0000-1000-8000-00805f9b34fb' # '00bb'
     LEBREW_RoastSeeNEXT_NOTIFY_UUID:Final[str] = '0000bb01-0000-1000-8000-00805f9b34fb' # 'bb01'
+    LEBREW_RoastSeeNEXT_WRITE_UUID:Final[str] = '0000bb01-0000-1000-8000-00805f9b34fb' # 'bb01'
 
     def __init__(self,
                     read_msg:Callable[[asyncio.StreamReader|IteratorReader], Awaitable[None]],
@@ -51,6 +63,7 @@ class Lebrew_RoastSeeNEXT_BLE(ClientBLE):
 
         self.add_device_description(self.LEBREW_RoastSeeNEXT_UUID, self.LEBREW_RoastSeeNEXT_Name)
         self.add_notify(self.LEBREW_RoastSeeNEXT_NOTIFY_UUID, self.notify_callback)
+        self.add_write(self.LEBREW_RoastSeeNEXT_UUID, self.LEBREW_RoastSeeNEXT_WRITE_UUID)
 
     def notify_callback(self, _sender:'BleakGATTCharacteristic', data:bytearray) -> None:
         if hasattr(self, '_async_loop_thread') and self._async_loop_thread is not None and self._read_queue is not None:
@@ -90,14 +103,17 @@ class Lebrew_RoastSeeNEXT:
 
     SEPARATOR:Final[bytes] = b'\x00'
 
-    __slots__ = [ '_ble_client', '_ble_client_started', '_payload_pattern', '_agtron', '_crack', '_RoR', '_FoR', '_distance', '_time', '_yellow', '_logging' ]
+    __slots__ = [ '_connected_handler', '_disconnected_handler', '_ble_client', '_ble_client_started',
+        '_payload_pattern', '_agtron', '_crack', '_RoR', '_FoR', '_distance', '_time', '_yellow', '_logging' ]
 
     def __init__(self,
                     connected_handler:Callable[[], None]|None = None,
                     disconnected_handler:Callable[[], None]|None = None) -> None:
 
+        self._connected_handler = connected_handler
+        self._disconnected_handler = disconnected_handler
         self._ble_client:Lebrew_RoastSeeNEXT_BLE|None = \
-                Lebrew_RoastSeeNEXT_BLE(self.read_msg, connected_handler, disconnected_handler)
+                Lebrew_RoastSeeNEXT_BLE(self.read_msg, self.connected_handler, self.disconnected_handler)
         self._ble_client_started:bool = False
         self._payload_pattern:re.Pattern[str] = re.compile(r'[^0-9,.]')
 
@@ -105,13 +121,25 @@ class Lebrew_RoastSeeNEXT:
         self._agtron:float = -1  # Color in Agtron
         self._crack:float = -1
         self._RoR:float = -1
-        self._FoR:float = -1
+        self._FoR:float = -1 # weighted_median_mean_agtron (mean or median!?)
         self._distance:float = -1
         self._time:float = -1
         self._yellow:float = 0
 
         # configuration
         self._logging = False         # if True device communication is logged
+
+    # handlers
+
+    def connected_handler(self) -> None:
+        self.start_measuring()
+        if self._connected_handler is not None:
+            self._connected_handler()
+
+    def disconnected_handler(self) -> None:
+        if self._disconnected_handler is not None:
+            self._disconnected_handler()
+
 
     # external API to access sensor state
 
@@ -169,6 +197,13 @@ class Lebrew_RoastSeeNEXT:
         # register readings
         self.register_reading(data[:-len(self.SEPARATOR)]) # self.SEPARATOR is included in readuntil result and need to be removed
 
+    def send_msg(self, message:bytes) -> None:
+        if hasattr(self, '_ble_client') and self._ble_client is not None:
+            # send via BLE
+            if self._logging:
+                _log.debug('send_msg(%s)',message)
+            self._ble_client.send(message, response=True)
+
     def start(self, connect_timeout:float=3) -> None:
         if self._ble_client is not None and not self._ble_client_started:
             self._ble_client_started = True
@@ -177,6 +212,16 @@ class Lebrew_RoastSeeNEXT:
 
     def stop(self) -> None:
         if self._ble_client is not None:
+            self.stop_measuring()
             self._ble_client.stop()
         self._ble_client = None
         self._ble_client_started = False
+
+    def start_measuring(self) -> None:
+        self.send_msg(b'roasting\r\n')
+#        time.sleep(1.5) # seems not needed
+        self.send_msg(b'start\r\n')
+
+    def stop_measuring(self) -> None:
+        self.send_msg(b'stop\r\n')
+        time.sleep(0.2)

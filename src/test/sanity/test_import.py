@@ -22,7 +22,11 @@ from artisanlib.roest import extractProfileRoestCSV
 from artisanlib.rubasse import extractProfileRubasseCSV
 from artisanlib.stronghold import extractProfileStrongholdXLSX
 from artisanlib.cropster import extractProfileCropsterXLS
+from artisanlib.orbiter import extractProfileOrbiterROP
 
+
+#from artisanlib.main import ApplicationWindow
+NLCDS:int = 10 # ApplicationWindow.nLCDS
 
 #######
 # Types
@@ -75,6 +79,8 @@ import_specs:list[ImportSpecs] = [
     (extractProfileRoestCSV, 'roest', '.csv'),
     (extractProfileRubasseCSV, 'rubasse', '.csv'),
     (extractProfileStrongholdXLSX, 'stronghold', '.xlsx'),
+    (extractProfileOrbiterROP, 'orbiter', '.zip'),
+    (extractProfileOrbiterROP, 'orbiter', '.rop')
 ]
 
 
@@ -99,7 +105,7 @@ class ApproxBaseReprMixin(ApproxBase):
                 return tuple(recur_repr_helper(o) for o in obj)
             if isinstance(obj, list):
                 return [recur_repr_helper(o) for o in obj]
-            return self._approx_scalar(obj)
+            return self._approx_scalar(obj) # type:ignore[return-value]
 
         return f'approx({recur_repr_helper(self.expected)})'
 
@@ -164,13 +170,16 @@ def pytest_generate_tests(metafunc:'Metafunc') -> None:
     def get_import_data(extractor:Extractor, dir_name:str, ext:str) -> list[ImportData]:
         profiles_dir = (data_dir / dir_name)
         import_data:list[ImportData] = []
-        for filename in [f.stem for f in profiles_dir.iterdir() if f.is_file() and f.suffix == ext]:
-            roest_data:ImportData = {
-                'extractor': extractor,
-                'directory': profiles_dir,
-                'filename': filename,
-                'ext': ext}
-            import_data.append(roest_data)
+        try:
+            for filename in [f.stem for f in profiles_dir.iterdir() if f.is_file() and f.suffix == ext]:
+                roest_data:ImportData = {
+                    'extractor': extractor,
+                    'directory': profiles_dir,
+                    'filename': filename,
+                    'ext': ext}
+                import_data.append(roest_data)
+        except FileNotFoundError:
+            pass
         return import_data
 
     if 'import_data' in metafunc.fixturenames:
@@ -203,10 +212,40 @@ class TestProfileImport:
         if csv_obj is None:
             pytest.skip('ProfileData is None')
         else:
+
+            # sort special events if any (as those are sorted after importing by Artisan)
+            if 'specialevents' in csv_obj:
+                packed_events:list[tuple[int,int,str,float]] = []
+                nevents = len(csv_obj['specialevents'])
+                # pack
+                for i in range(nevents):
+                    packed_events.append(
+                        (csv_obj['specialevents'][i],
+                         csv_obj['specialeventstype'][i],
+                         csv_obj['specialeventsStrings'][i],
+                         csv_obj['specialeventsvalue'][i]))
+                # sort
+                packed_events_sorted = sorted(packed_events, key=lambda tup: tup[0])
+                # unpack
+                csv_obj['specialevents'] = [e for (e,_,_,_) in packed_events_sorted]
+                csv_obj['specialeventstype'] = [t for (_,t,_,_) in packed_events_sorted]
+                csv_obj['specialeventsStrings'] = [s for (_,_,s,_) in packed_events_sorted]
+                csv_obj['specialeventsvalue'] = [v for (_,_,_,v) in packed_events_sorted]
+            # ensure that extra device structures are of expected length (as those are adjusted after import)
+            for tag, default_value in [
+                    ('extraLCDvisibility1', False), ('extraLCDvisibility2', False),
+                    ('extraCurveVisibility1', True), ('extraCurveVisibility2', True),
+                    ('extraDelta1', False), ('extraDelta2', False),
+                    ('extraFill1', 0), ('extraFill2', 0)]:
+                if tag in csv_obj:
+                    csv_obj[tag] = csv_obj[tag][:NLCDS] # type:ignore[literal-required]
+                    csv_obj[tag] = csv_obj[tag] + [default_value]*max(0,NLCDS-len(csv_obj[tag]))   # type:ignore[literal-required]
+
+
             test_validation_profile_path = (import_data['directory'] / f"{import_data['filename']}.json")
             # Skip test if file doesn't exist
             if not test_validation_profile_path.exists():
-                pytest.skip('Test validation profile file not found')
+                pytest.skip(f'Test validation profile file not found: {test_validation_profile_path}')
             with open(test_validation_profile_path, encoding='utf-8') as infile:
                 json_obj = json_load(infile)
                 for key, value in csv_obj.items():

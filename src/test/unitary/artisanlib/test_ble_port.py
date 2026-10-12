@@ -120,7 +120,7 @@ class TestBLE:
         device_name = 'Test'
 
         # Act
-        result = BLE.name_match(mock_ble_device, mock_advertisement_data, device_name, True, None)
+        result = BLE.name_match(mock_ble_device, mock_advertisement_data, device_name, True, None, False)
 
         # Assert
         assert result is True
@@ -134,7 +134,7 @@ class TestBLE:
         device_name = 'TEST'
 
         # Act
-        result = BLE.name_match(mock_ble_device, mock_advertisement_data, device_name, False, None)
+        result = BLE.name_match(mock_ble_device, mock_advertisement_data, device_name, False, None, False)
 
         # Assert
         assert result is True
@@ -149,25 +149,7 @@ class TestBLE:
         device_name = 'Test'
 
         # Act
-        result = BLE.name_match(mock_ble_device, mock_advertisement_data, device_name, True, None)
-
-        # Assert
-        assert result is True
-
-    def test_name_match_with_service_uuid(
-        self, mock_ble_device: Mock, mock_advertisement_data: Mock
-    ) -> None:
-        """Test name_match with service UUID when local_name is None."""
-        # Arrange
-        mock_ble_device.name = None
-        mock_advertisement_data.local_name = None
-        service_uuid = '12345678-1234-1234-1234-123456789abc'
-        mock_advertisement_data.service_uuids = [service_uuid]
-
-        # Act
-        result = BLE.name_match(
-            mock_ble_device, mock_advertisement_data, 'NonExistent', True, service_uuid
-        )
+        result = BLE.name_match(mock_ble_device, mock_advertisement_data, device_name, True, None, False)
 
         # Assert
         assert result is True
@@ -182,7 +164,7 @@ class TestBLE:
         device_name = 'Test'
 
         # Act
-        result = BLE.name_match(mock_ble_device, mock_advertisement_data, device_name, True, None)
+        result = BLE.name_match(mock_ble_device, mock_advertisement_data, device_name, True, None, False)
 
         # Assert
         assert result is False
@@ -192,15 +174,15 @@ class TestBLE:
     ) -> None:
         """Test description_match with successful match."""
         # Arrange
-        device_descriptions = {
+        device_descriptions:tuple[dict[str|None, set[str]|None], dict[str, dict[str, int]]] = ({
             'service-uuid-1': {'TestDevice', 'AnotherDevice'},
             'service-uuid-2': None,
-        }
+        }, {})
         mock_ble_device.name = 'TestDevice'
 
         # Act
         result, service_uuid = ble_instance.description_match(
-            mock_ble_device, mock_advertisement_data, device_descriptions, True  # type: ignore[arg-type]
+            mock_ble_device, mock_advertisement_data, device_descriptions, True
         )
 
         # Assert
@@ -212,11 +194,11 @@ class TestBLE:
     ) -> None:
         """Test description_match with None device names (matches any)."""
         # Arrange
-        device_descriptions = {'service-uuid-1': None}
+        device_descriptions:tuple[dict[str|None, set[str]|None], dict[str, dict[str, int]]]  = ({'service-uuid-1': None}, {})
 
         # Act
         result, service_uuid = ble_instance.description_match(
-            mock_ble_device, mock_advertisement_data, device_descriptions, True  # type: ignore[arg-type]
+            mock_ble_device, mock_advertisement_data, device_descriptions, True
         )
 
         # Assert
@@ -228,13 +210,13 @@ class TestBLE:
     ) -> None:
         """Test description_match when no match is found."""
         # Arrange
-        device_descriptions = {'service-uuid-1': {'DifferentDevice'}}
+        device_descriptions:tuple[dict[str|None, set[str]|None], dict[str, dict[str, int]]]  = ({'service-uuid-1': {'DifferentDevice'}}, {})
         mock_ble_device.name = 'TestDevice'
         mock_advertisement_data.local_name = 'TestLocal'
 
         # Act
         result, service_uuid = ble_instance.description_match(
-            mock_ble_device, mock_advertisement_data, device_descriptions, True  # type: ignore[arg-type]
+            mock_ble_device, mock_advertisement_data, device_descriptions, True
         )
 
         # Assert
@@ -444,7 +426,7 @@ class TestClientBLE:
         client_ble_instance.add_device_description(None, None)
 
         # Assert
-        assert client_ble_instance._device_descriptions == {}
+        assert client_ble_instance._device_descriptions == {None : None}
 
     def test_add_notify(self, client_ble_instance: ClientBLE) -> None:
         """Test add_notify method."""
@@ -498,7 +480,7 @@ class TestClientBLE:
             client_ble_instance.send(message, response=True)
 
             # Assert
-            mock_ble.write.assert_called_once_with(mock_client, 'write-uuid-1', message, True)
+            mock_ble.write.assert_called_once_with(mock_client, 'write-uuid-1', message, True, 20)
 
     def test_send_with_specific_write_characteristic(self, client_ble_instance: ClientBLE) -> None:
         """Test send with specific write characteristic."""
@@ -514,7 +496,7 @@ class TestClientBLE:
             client_ble_instance.send(message, write_characteristic='write-uuid-2')
 
             # Assert
-            mock_ble.write.assert_called_once_with(mock_client, 'write-uuid-2', message, False)
+            mock_ble.write.assert_called_once_with(mock_client, 'write-uuid-2', message, False, 20)
 
     def test_send_no_client(self, client_ble_instance: ClientBLE) -> None:
         """Test send when no client is connected."""
