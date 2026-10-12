@@ -1,16 +1,26 @@
 #!/bin/sh
 # ABOUT
-# Build shell script for Artisan Linux builds
+# Build shell script for artisan Linux builds
+#
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
 #
 # LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later versison. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
 #
 # AUTHOR
 # Dave Baxter, Marko Luther 2023
@@ -88,6 +98,8 @@ cp includes/SourceHanSansTW-Regular.otf dist
 cp includes/dijkstra.ttf dist
 cp includes/ComicNeue-Regular.ttf dist
 cp includes/xkcd-script.ttf dist
+cp includes/Nunito-Regular.ttf dist
+cp includes/NotoSansMono-Regular.ttf dist
 cp includes/alarmclock.eot dist
 cp includes/alarmclock.svg dist
 cp includes/alarmclock.ttf dist
@@ -101,8 +113,11 @@ cp includes/fitty_patched.js dist
 cp includes/bigtext.js dist
 cp includes/sorttable.js dist
 cp includes/report-template.htm dist
+cp includes/report-template-pdf.htm dist
 cp includes/roast-template.htm dist
+cp includes/roast-template-pdf.htm dist
 cp includes/ranking-template.htm dist
+cp includes/ranking-template-pdf.htm dist
 cp includes/jquery-1.11.1.min.js dist
 cp includes/android-chrome-192x192.png dist
 cp includes/android-chrome-512x512.png dist
@@ -114,7 +129,8 @@ cp includes/favicon.ico dist
 cp includes/mstile-150x150.png dist
 cp includes/safari-pinned-tab.svg dist
 cp includes/site.webmanifest dist
-cp includes/logging.yaml dist
+cp includes/logging.json dist
+cp includes/artisan_public_key.pem dist
 cp -R icons dist
 cp -R Wheels dist
 cp README.txt dist
@@ -135,10 +151,11 @@ cp -R includes/Icons/* dist/Icons
 
 # remove unused Qt modules
 
-keep_qt_modules="libQt6Bluetooth libQt6Concurrent libQt6Core libQt6DBus libQt6Gui libQt6Network
- libQt6OpenGL libQt6Positioning libQt6PrintSupport libQt6Qml libQt6QmlModels libQt6QmlMeta libQt6Quick libQt6QuickWidgets
- libQt6Svg libQt6WaylandClient libQt6WaylandEglClientHwIntegration libQt6WebChannel libQt6WebEngineCore
- libQt6WebEngineWidgets libQt6Widgets libQt6WlShellIntegration libQt6XcbQpa libQt6QmlWorkerScript"
+keep_qt_modules="libQt6Concurrent libQt6Core libQt6DBus libQt6Gui libQt6Network
+ libQt6PrintSupport libQt6Svg libQt6WaylandClient libQt6WaylandEglClientHwIntegration
+ libQt6Widgets libQt6WlShellIntegration libQt6XcbQpa libQt6SvgWidgets"
+
+
 
 for qtlib in $(find dist/_internal/PyQt6/Qt6/lib -type f -name "libQt6*.so.*"); do
     qtlib_filename="${qtlib##*/}"
@@ -167,12 +184,12 @@ for x in ${qt_imageformats}; do
 done
 
 
-SUPPORTED_LANGUAGES="ar cs da de el en es fa fi fr gd he hu id it ja ko lv nl no pl pt_BR pt sk sv th tr uk vi zh_CN zh_TW"
+SUPPORTED_LANGUAGES="ar bg cs da de el en es fa fi fr gd he hu id it ja ko lv nl no pl pt_BR pt sk sv th tr uk vi zh_CN zh_TW"
 
 # remove unused Qt translations
 
 # the following produces a (harmless) warning log entry on generating PDF reports as locales cannot be found
-rm -rf dist/_internal/PyQt6/Qt6/translations/qtwebengine_locales
+#rm -rf dist/_internal/PyQt6/Qt6/translations/qtwebengine_locales
 
 for qttrans in $(find dist/_internal/PyQt6/Qt6/translations -type f -name "*.qm"); do
     qttrans_filename="${qttrans##*/}"

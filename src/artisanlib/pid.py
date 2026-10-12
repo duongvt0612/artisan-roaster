@@ -1,17 +1,27 @@
 #
 # ABOUT
-# This program realizes a PID controller as part of the open-source roast logging software Artisan.
-
+# This program realizes a PID controller as part of the open-source roast logging software artisan scope
+#
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
 # LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
-
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
 # AUTHOR
 # Marko Luther, 2023
 
@@ -20,6 +30,7 @@
 import logging
 import time
 import functools
+import warnings
 import numpy
 from collections.abc import Callable
 from typing import Final, TYPE_CHECKING
@@ -27,8 +38,6 @@ from typing import Final, TYPE_CHECKING
 if TYPE_CHECKING:
     import numpy.typing as npt # pylint: disable=unused-import
 
-
-from scipy.signal import iirfilter  # type # ignore[import-untyped]
 
 from artisanlib.filters import LiveSosFilter
 from artisanlib.suppress_errors import suppress_stdout_stderr
@@ -64,11 +73,15 @@ def _calculate_integral_limits(outMin:int, outMax:int, integral_limit_factor:flo
 
 @functools.lru_cache(maxsize=3)
 def _getParameterLinearFit(x1:float, x2:float, y1:float, y2:float) -> 'npt.NDArray[numpy.floating]':
-    return numpy.polyfit([x1,x2], [y1,y2], 1)
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        return numpy.polyfit([x1,x2], [y1,y2], 1)
 
 @functools.lru_cache(maxsize=3)
 def _getParameterQuadraticFit(x1:float, x2:float, x3:float, y1:float, y2:float, y3:float) -> 'npt.NDArray[numpy.floating]':
-    return numpy.polyfit([x1,x2,x3], [y1,y2,y3], 2)
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        return numpy.polyfit([x1,x2,x3], [y1,y2,y3], 2)
 
 
 # expects a function control that takes a value from [<outMin>,<outMax>] to control the heater as called on each update()
@@ -189,10 +202,10 @@ class PID:
         self.active: bool = False  # if active, the control function is called with the PID results
         # PID output smoothing
         self.output_filter_level: int = 0  # off if 0
-        self.output_filter: LiveSosFilter = self.outputFilter(self.sampling_rate)
+        self.output_filter: LiveSosFilter|None = None
         # PID derivative smoothing
         self.derivative_filter_level: int = 0  # 0: off, >0: on
-        self.derivative_filter: LiveSosFilter = self.derivativeFilter(self.sampling_rate)
+        self.derivative_filter: LiveSosFilter|None = None
         #
         self.force_duty: int = (
             3  # at least every n update cycles a new duty value is send, even if its duplicating a previous duty (within the duty step)
@@ -225,6 +238,8 @@ class PID:
 
     def _smooth_output(self, output: float) -> float:
         if self.output_filter_level > 0:
+            if self.output_filter is None:
+                self.output_filter = self.outputFilter(self.sampling_rate)
             return self.output_filter(output)
         return output
 
@@ -260,6 +275,8 @@ class PID:
 
         # apply derative filter before estimating limits in DoM mode
         if self.derivative_filter_level > 0:
+            if self.derivative_filter is None:
+                self.derivative_filter = self.derivativeFilter(self.sampling_rate)
             derror = self.derivative_filter(derror)
 
         # Apply derivative limiting to prevent excessive derivative action
@@ -372,9 +389,9 @@ class PID:
             coefficients:npt.NDArray[numpy.floating] | None = None
             try:
                 with suppress_stdout_stderr():
-                    if self.gain_scheduling_quadratic:
+                    if self.gain_scheduling_quadratic and not self.Schedule0 == self.Schedule1 == self.Schedule2 == 0:
                         coefficients = _getParameterQuadraticFit(self.Schedule0,self.Schedule1,self.Schedule2,y1,y2,y3)
-                    else:
+                    elif not self.Schedule0 == self.Schedule1 == 0:
                         coefficients = _getParameterLinearFit(self.Schedule0,self.Schedule1,y1,y2)
             except Exception:  # pylint: disable=broad-except
                 pass
@@ -423,7 +440,6 @@ class PID:
                 if abs(setpoint_change) > 0.001:
                     self.setpoint_changed_significantly = abs(setpoint_change) > self.significant_setup_change_limit > 0
                     self._handle_setpoint_change_integral(setpoint_change)
-                    self.lastTarget = self.target
                 else:
                     # Gradually clear the setpoint changed flags
                     self.setpoint_changed_significantly = False
@@ -447,12 +463,14 @@ class PID:
 
                 self.Dterm = self._calculate_derivative(i, dt)
 
+
                 # Update measurement history for discontinuity detection (after calculating D which calls detect discontinuity)
                 self._update_measurement_history(i)
 
                 self.lastTime = now
                 self.lastError = err
                 self.lastInput = i
+                self.lastTarget = self.target
                 output: float = self.Pterm + self.Iterm + self.Dterm
 
                 output = self._smooth_output(output)
@@ -498,12 +516,12 @@ class PID:
         self.init()
 
     # re-initalize the PID on restarting it after a temporary off state
-    def init(self, lock: bool = True, sampling_rate:float = 1.) -> None:
+    def init(self, lock: bool = True) -> None:
         try:
             if lock:
                 self.pidSemaphore.acquire(1)
             # reset the filters on each filter level change (also on PID ON)
-            self.derivative_filter = self.derivativeFilter(sampling_rate)
+            self.derivative_filter = self.derivativeFilter(self.sampling_rate)
             self.output_filter = self.outputFilter(self.sampling_rate)
             #
             self.errSum = 0.0
@@ -648,6 +666,7 @@ class PID:
         """infinite impulse response filter"""
         # Note: IIR filter can be computed faster but can suffer from artefacts and FIR filters should be preferred. However, IIR filter specification
         # can be easier adjusted to varying samplings rates
+        from scipy.signal import iirfilter  # type # ignore[import-untyped]
         return LiveSosFilter(
             iirfilter(
                 1,         # order (higher-order, sharper cut-off, but incr. delay)

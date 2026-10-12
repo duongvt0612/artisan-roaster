@@ -1,6 +1,26 @@
 #
 # ABOUT
-# Stronghold XLS Roast Profile importer for Artisan
+# Stronghold XLS roast profile importer for artisan scope
+#
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
+# LICENSE
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
 
 import openpyxl
 import logging
@@ -72,7 +92,7 @@ def extractProfileStrongholdXLSX(file:str,
                         if key == 'Time':
                             data[key].append(stringtoseconds(str(sheet.cell(row, i+1).value)))
                         else:
-                            data[key].append(sheet.cell(row, i+1).value) # type:ignore[arg-type] # ty:ignore[ignore]
+                            data[key].append(sheet.cell(row, i+1).value) # type:ignore[arg-type]
             except Exception as e:  # pylint: disable=broad-except
                 _log.error(e)
 
@@ -81,7 +101,7 @@ def extractProfileStrongholdXLSX(file:str,
             res['title'] = encodeLocalStrict(Path(file).stem)
             res['roastertype'] = machine
             res['roastersize'] = machine_size
-            res['timex'] = data['Time'] # type:ignore[typeddict-item] # ty:ignore[ignore]
+            res['timex'] = data['Time'] # type:ignore[typeddict-item]
             tx_len = len(res['timex'])
             res['mode'] = 'C'
             # add CHARGE/DROP
@@ -94,11 +114,11 @@ def extractProfileStrongholdXLSX(file:str,
                     pass
             # add ET/BT
             if 'ET' in data and len(data['ET']) == tx_len:
-                res['temp1'] = data['ET'] # type:ignore[typeddict-item] # ty:ignore[ignore]
+                res['temp1'] = data['ET'] # type:ignore[typeddict-item]
             else:
                 res['temp2'] = [-1.0]*tx_len
             if 'BT' in data and len(data['BT']) == tx_len:
-                res['temp2'] = data['BT'] # type:ignore[typeddict-item] # ty:ignore[ignore]
+                res['temp2'] = data['BT'] # type:ignore[typeddict-item]
             else:
                 res['temp2'] = [-1.0]*tx_len
             res['extradevices'] = [25] # one extra virtual device
@@ -106,11 +126,11 @@ def extractProfileStrongholdXLSX(file:str,
             res['extraname2'] = ['DT']
             res['extratimex'] = [res['timex'][:]] # pyright:ignore
             if 'IT' in data and len(data['IT']) == tx_len:
-                res['extratemp1'] = [data['IT']] # type:ignore[list-item] # ty:ignore[ignore]
+                res['extratemp1'] = [[float(x) for x in data['IT']]]
             else:
                 res['extratemp1'] = [[-1.0]*tx_len]
             if 'DT' in data and len(data['DT']) == tx_len:
-                res['extratemp2'] = [data['DT']] # type:ignore[list-item] # ty:ignore[ignore]
+                res['extratemp2'] = [[float(x) for x in data['DT']]]
             else:
                 res['extratemp2'] = [[-1.0]*tx_len]
             res['extramathexpression1'] = ['']

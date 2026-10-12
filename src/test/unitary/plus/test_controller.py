@@ -171,8 +171,6 @@ with patch('PyQt6.QtCore.QSemaphore', MockQSemaphore), patch(
 ), patch(
     'plus.config.app_window', None
 ), patch(
-    'plus.config.passwd', None
-), patch(
     'plus.config.app_name', 'artisan.plus'
 ), patch(
     'keyring.set_password', Mock()
@@ -263,7 +261,6 @@ def reset_controller_state() -> Generator[None, None, None]:
     # Store original values
     original_connected = getattr(controller.config, 'connected', False)
     original_app_window = getattr(controller.config, 'app_window', None)
-    original_passwd = getattr(controller.config, 'passwd', None)
 
     # Reset semaphore mocks if they exist and are actually mocks
     if hasattr(controller, 'connect_semaphore'):
@@ -281,7 +278,6 @@ def reset_controller_state() -> Generator[None, None, None]:
     # Restore original values
     controller.config.connected = original_connected
     controller.config.app_window = original_app_window
-    controller.config.passwd = original_passwd
 
 
 @pytest.fixture
@@ -875,7 +871,6 @@ class TestConnectFunction:
         ):
 
             mock_config.app_window = mock_app_window
-            mock_config.passwd = None
             mock_qsemaphore.available.return_value = 0  # Semaphore acquired
 
             # Act

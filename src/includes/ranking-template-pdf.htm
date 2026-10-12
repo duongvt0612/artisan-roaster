@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8">
+<title>$title</title>
+<meta name="description" content="Artisan ranking report">
+<meta name="author" content="Artisan Roaster Scope">
+<script src="${resources}sorttable.js" type="text/javascript"></script>
+<style type="text/css">
+body {
+    background: #ffffff;
+    color: #0f5071
+}
+.page-break {
+  break-after: page;
+}
+svg {
+  left: 1px;
+  top: 1px;   
+  width: 100%;
+}
+a {
+  color: #297aa3;
+}
+h1 {
+  color: #2978a3;
+}
+table {
+    border-collapse: collapse;
+    -webkit-print-color-adjust: exact;
+    color-adjust: exact;
+}
+th, td {
+    text-align: right;
+    padding: 5px;
+    white-space:nowrap;
+    -webkit-print-color-adjust: exact;
+    color-adjust: exact;
+    border: 1px solid #d7d9db;
+}
+td:nth-child(1) {
+    text-align: left;
+}
+td:nth-child(2) {
+    text-align: left;
+    width: 20%;
+}
+
+td:nth-child(4) {
+    width: 20%;
+    text-align: left;
+    background-color: #8080801a;
+}
+td:nth-child(5) {
+    width: 20%;
+    text-align: left;
+    background-color: #8080804d;
+}
+td:nth-child(6) {
+    width: 20%;
+    text-align: left;
+    background-color: #0000ff0d;
+}
+td:nth-child(7) {
+    width: 20%;
+    text-align: left;
+    background-color: #0000ff1a;
+}
+td:nth-child(8) {
+    width: 20%;
+    text-align: left;
+    background-color: #ff00000d;
+}
+td:nth-child(9) {
+    width: 20%;
+    text-align: left;
+    background-color: #ff00001a;
+}
+td:nth-child(10) {
+    width: 20%;
+    text-align: left;
+    background-color: #00ff000d;
+}
+td:nth-child(11) {
+    width: 20%;
+    text-align: left;
+    background-color: #00ff000d;
+}
+td:nth-child(12) {
+    width: 20%;
+    text-align: left;
+    background-color: #00ff000d;
+}
+td:nth-child(13) {
+    width: 20%;
+    text-align: left;
+    background-color: #00ff001a;
+}
+td:nth-child(14) {
+    width: 20%;
+    text-align: left;
+    background-color: #8080801a;
+}
+td:nth-child(15) {
+    width: 20%;
+    text-align: left;
+    background-color: #8080801a;
+}
+td:nth-child(16) {
+    width: 20%;
+    text-align: left;
+    background-color: #8080801a;
+}
+td:nth-child(17) {
+    width: 20%;
+    text-align: left;
+    background-color: #0000ff0d;
+}
+td:nth-child(18) {
+    width: 20%;
+    text-align: left;
+    background-color:  #0000ff0d;
+}
+
+
+tfoot {
+    background-color: #949b9e !important;
+    color: white !important;
+    -webkit-print-color-adjust: exact;
+    color-adjust: exact;
+    font-weight: bold;
+}
+.inv {
+    color: #264859;
+    background-color: #c9cdcf !important;
+}
+th {
+    text-align: center;
+    background-color: #3997c6;
+    color: #ffffff !important;
+    -webkit-print-color-adjust: exact;
+}
+.grey {
+  background-color: #8080801a;
+}
+.lightgrey {
+  background-color: #e6e6e680;
+}
+.darkgrey {
+  background-color: #8080804d;
+}
+.red {
+  background-color: #ff00000d;
+}
+.darkred {
+  background-color: #ff00001a;
+}
+.blue {
+  background-color: #0000ff0d;
+}
+.darkblue {
+  background-color: #0000ff1a;
+}
+.green {
+  background-color: #00ff000d;
+}
+.darkgreen {
+  background-color: #00ff001a;
+}
+</style>
+</head>
+<body>
+<h1>$title</h1>
+<table class="sortable">
+<colgroup>
+    <col class="grey" />
+    <col span="2" />
+    <col class="grey" />
+    <col class="darkgrey" />
+    <col class="blue" />
+    <col class="darkblue" />
+    <col class="red" />
+    <col class="darkred" />
+    <col class="green" span="3" />
+    <col class="darkgreen" />
+    <col class="grey" span="3" />
+    <col class="blue" span="3" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>$time<br>$profile</th>
+<th>$weightin<br><small>($weight_unit)</small></th>
+<th>CHR<br><small>($temp_unit)</small></th>
+<th>FCs<br><small>(min)</small></th>
+<th>FCs<br><small>($temp_unit)</small></th>
+<th>DROP<br><small>(min)</small></th>
+<th>DROP<br><small>($temp_unit)</small></th>
+<th>DRY<br><small>(%)</small></th>
+<th>MAI<br><small>(%)</small></th>
+<th>DEV<br><small>(%)</small></th>
+<th>AUC<br><small>(C*min)</small></th>
+<th>$weightloss<br><small>(%)</small></th>
+<th>$colorHeader<br><small>&nbsp;</small></th>
+<th>Cup<br><small>&nbsp;</small></th>
+<th>Energy<br><small>(kWh)</small></th>
+<th>CO2<br><small>(g)</small></th>
+<th>CO2/kg<br><small>(g)</small></th>
+</tr>
+</thead>
+<tbody>
+$entries
+</tbody>
+<tfoot>
+<tr>
+<td class="inv">AVG</td>
+<td ></td>
+<td class="inv">${charges_avg}</td>
+<td class="inv">${charges_temp_avg}</td>
+<td class="inv">${FCs_time_avg}</td>
+<td class="inv">${FCs_temp_avg}</td>
+<td class="inv">${DROP_time_avg}</td>
+<td class="inv">${DROP_temp_avg}</td>
+<td class="inv">${DRY_percent_avg}</td>
+<td class="inv">${MAI_percent_avg}</td>
+<td class="inv">${DEV_percent_avg}</td>
+<td class="inv">${AUC_avg}</td>
+<td class="inv">${loss_avg}</td>
+<td class="inv">${colors_avg}</td>
+<td class="inv">${cup_avg}</td>
+<td class="inv">${energy_avg}</td>
+<td class="inv">${co2_avg}</td>
+<td class="inv">${co2kg_avg}</td>
+</tr>
+</tfoot>
+</table>
+<div class="page-break"></div>
+<br>
+<p style="text-align:center;">
+$graph_image
+</p>
+<div class="page-break"></div>
+<br>
+<p style="text-align:center;">
+$graph_image_pct
+</p>
+</body>
+</html>

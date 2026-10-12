@@ -1,8 +1,8 @@
 <img align="right" src="https://raw.githubusercontent.com/artisan-roaster-scope/artisan/master/wiki/screenshots/artisan.png" width="70">
 
-Artisan
+artisan scope
 ==========
-Visual scope for coffee roasters
+visual scope for coffee roasters
 
 [![Latest release](https://img.shields.io/github/release/artisan-roaster-scope/artisan.svg)](https://github.com/artisan-roaster-scope/artisan/releases/latest)
 [![Pre-release](https://img.shields.io/github/release-pre/artisan-roaster-scope/artisan.svg)](https://github.com/artisan-roaster-scope/artisan/releases/continuous)
@@ -15,6 +15,7 @@ Visual scope for coffee roasters
 [![pytest](https://github.com/artisan-roaster-scope/artisan/actions/workflows/pytest.yaml/badge.svg?branch=master)](https://github.com/artisan-roaster-scope/artisan/actions/workflows/pytest.yaml)
 ![coverage](./src/coverage.svg)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
+![Made in Bavaria](https://raw.githubusercontent.com/artisan-roaster-scope/artisan/refs/heads/master/wiki/screenshots/with-love-from-bavaria.svg)
 
 
 *WARNING: pre-release (continuous) builds may not work.  Use at your own risk.*
@@ -23,16 +24,16 @@ Visual scope for coffee roasters
 Summary
 -------
 
-Artisan is a software that helps coffee roasters record, analyze, and control roast profiles. When used in conjunction with a thermocouple data logger or a proportional–integral–derivative controller (PID controller), this software can automate the creation of roasting metrics to help make decisions that influence the final coffee flavor.
+artisan scope is a software that helps coffee roasters record, analyze, and control roast profiles. When used in conjunction with a thermocouple data logger or a proportional–integral–derivative controller (PID controller), this software can automate the creation of roasting metrics to help make decisions that influence the final coffee flavor.
 
-Artisan is listed on [Awesome Python Applications](https://github.com/mahmoud/awesome-python-applications).
+artisan scope is listed on [Awesome Python Applications](https://github.com/mahmoud/awesome-python-applications).
 
 Donations
 ---------
 
 This software is open-source and absolutely free to use, also in commercial settings.
 
-If you think Artisan is useful to you, contribute financially to its further development. Send any amount via my [PayPal.Me page](https://www.paypal.me/MarkoLuther). Thanks!
+If you think artisan scope is useful to you, contribute financially to its further development. Send any amount via my [PayPal.Me page](https://www.paypal.me/MarkoLuther). Thanks!
 
 > *Home roasting enthusiasts often donate 10-100.- (in $ or EUR), while small roasting businesses and consultant that use Artisan in their daily work tend to donate 100-300.- (in $ or EUR). For extra tech support, please inquire.*
 
@@ -47,10 +48,9 @@ If you think Artisan is useful to you, contribute financially to its further dev
 
 
 PLEASE FOLLOW AND TAG US!
-&nbsp;&nbsp;&nbsp;&nbsp;<a href="https://www.facebook.com/ArtisanScope"><img src="https://github.com/artisan-roaster-scope/artisan/blob/master/wiki/screenshots/facebook-square.svg?raw=true" width="30"></a>&nbsp;&nbsp;&nbsp;<a href="https://www.instagram.com/artisanscope/"><img src="https://github.com/artisan-roaster-scope/artisan/blob/master/wiki/screenshots/instagram-square.svg?raw=true" width="30"></a>&nbsp;&nbsp;&nbsp;<a href="https://www.youtube.com/channel/UCEp-DH_Y7sBR3-X3FWomgog"><img src="https://github.com/artisan-roaster-scope/artisan/blob/master/wiki/screenshots/youtube-svgrepo-com.svg?raw=true" width="30"></a>&nbsp;&nbsp;&nbsp;<a href="https://masto.ai/@artisan"><img src="https://github.com/artisan-roaster-scope/artisan/blob/master/wiki/screenshots/mastodon-icon-svgrepo-com.svg?raw=true" width="30"></a>&nbsp;&nbsp;&nbsp;<a href="https://www.linkedin.com/company/artisan-plus"><img src="https://github.com/artisan-roaster-scope/artisan/blob/master/wiki/screenshots/linkedin-svgrepo-com.svg?raw=true" width="30"></a>
+&nbsp;&nbsp;&nbsp;&nbsp;<a href="https://www.facebook.com/ArtisanScope"><img src="https://github.com/artisan-roaster-scope/artisan/blob/master/wiki/screenshots/facebook-square.svg?raw=true" width="30"></a>&nbsp;&nbsp;&nbsp;<a href="https://www.instagram.com/artisanscope/"><img src="https://github.com/artisan-roaster-scope/artisan/blob/master/wiki/screenshots/instagram-square.svg?raw=true" width="30"></a>&nbsp;&nbsp;&nbsp;<a href="https://www.youtube.com/channel/UCEp-DH_Y7sBR3-X3FWomgog"><img src="https://github.com/artisan-roaster-scope/artisan/blob/master/wiki/screenshots/youtube-svgrepo-com.svg?raw=true" width="30"></a>&nbsp;&nbsp;&nbsp;<a href="https://fosstodon.org/@artisan"><img src="https://github.com/artisan-roaster-scope/artisan/blob/master/wiki/screenshots/mastodon-icon-svgrepo-com.svg?raw=true" width="30"></a>&nbsp;&nbsp;&nbsp;<a href="https://www.linkedin.com/company/artisan-plus"><img src="https://github.com/artisan-roaster-scope/artisan/blob/master/wiki/screenshots/linkedin-svgrepo-com.svg?raw=true" width="30"></a>
 
 
-[![Star History Chart](https://api.star-history.com/svg?repos=artisan-roaster-scope/artisan&type=Date)](https://star-history.com/#artisan-roaster-scope/artisan&Date)
 
 <a id="version_history"></a>
 Version History
@@ -62,6 +62,7 @@ Version History
 
 | Version | Date  | Comment |
 |---------|------:|---------|
+| [v4.2.0](https://artisan-scope.org/release/Artisan-v4.2/) | Jun&nbsp;30,&nbsp;2026 | Adds support for [ROEST](https://artisan-scope.org/machines/roest/), [Orbiter](https://artisan-scope.org/machines/orbiter/), [Pratter](https://artisan-scope.org/machines/pratter/), [Probat G/UG 2026](https://artisan-scope.org/machines/probat/), [Neuhaus Neotec](https://artisan-scope.org/machines/neuhaus/), [North Roasters](https://artisan-scope.org/machines/north/), and the [MQTT protocol](https://artisan-scope.org/devices/mqtt/). <br>:heart: <b>Release Sponsor: [LABEL!STEN](https://labelisten.com/)</b> :heart: |
 | [v4.0.2](https://github.com/artisan-roaster-scope/artisan/releases/tag/v4.0.2) | Feb&nbsp;7,&nbsp;2026 | Bug fixes |
 | [v4.0.0](https://github.com/artisan-roaster-scope/artisan/releases/tag/v4.0.0) | Jan&nbsp;28,&nbsp;2026 | Adds UI modes, adds support for [Lebrew RoastSee NEXT](https://lebrewtech.com/products/roastsee-next) and [Acaia Pyxis Black (2025)](https://eu.acaia.co/products/pyxis-black), 2DOF software PID implementation with interpolated gain scheduling, bumpless transfer and filtering, general stability and performance improvements.<br>:heart: <b>Release Sponsor: [artisan.plus](https://artisan.plus/)</b> :heart: |
 | [v3.4.0](https://github.com/artisan-roaster-scope/artisan/releases/tag/v3.4.0) | Oct&nbsp;31,&nbsp;2025 | Adds support for [Kraffe](https://artisan-scope.org/machines/kraffe/), [Berto](https://artisan-scope.org/machines/berto/), [Nordic PLC](https://artisan-scope.org/machines/nordic/), [Prisma](https://artisan-scope.org/machines/prisma/), additional [Easyster](https://artisan-scope.org/machines/easyster/) and [Proaster](https://artisan-scope.org/machines/proaster/) models, the latest [Cogen](https://artisan-scope.org/machines/cogen/) and [Toper](https://artisan-scope.org/machines/toper/) roasters, and updates setups for [Sweet Coffee Italia](https://artisan-scope.org/machines/sci/) and [Joper](https://joper-roasters.com/) machines. Adds support for [Tasi TA612C 4-channel](https://artisan-scope.org/devices/meters/) and [Shelly energy meters](https://artisan-scope.org/devices/shelly/), as well as the ability to import Cropster profiles through drag-and-drop. Enables multi-day coffee fermentation experiments. Adds Czech and improved Chinese, Korean, and Spanish localizations. Updates the internal PID algorithm with advanced algorithmic and the app icon for the glass era (last version featuring legacy builds supporting macOS 10.13+ and Window 8).<br>:heart: <b>Release Sponsor: [artisan.plus](https://artisan.plus/)</b> :heart: |
@@ -126,5 +127,4 @@ Version History
 ----
 License
 -------
-
-[![](http://www.gnu.org/graphics/gplv3-88x31.png)](http://www.gnu.org/copyleft/gpl.html)
+[![](http://www.gnu.org/graphics/agplv3-88x31.png)](https://www.gnu.org/licenses/agpl-3.0.html)

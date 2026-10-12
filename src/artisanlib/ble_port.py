@@ -1,24 +1,34 @@
 #
 # ABOUT
-# BLE support for Artisan
-
+# BLE support for artisan scope
+#
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
 # LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
-
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
 # AUTHOR
 # Marko Luther, 2024
 
 import asyncio
 import logging
 from bleak import BleakScanner, BleakClient
-from bleak.exc import BleakCharacteristicNotFoundError, BleakBluetoothNotAvailableError
+from bleak.exc import BleakError, BleakCharacteristicNotFoundError, BleakBluetoothNotAvailableError
 
 
 from PyQt6.QtCore import QObject
@@ -57,37 +67,48 @@ class BLE:
     def terminate_scan(self) -> None:
         self._terminate_scan_event.set()
 
-    # returns True if the given device name matches with the devices name or the local_name of the advertisement
+    # returns True if the given device_name is a prefix of the devices name or the local_name of the advertisement
     # returns True also in case the local_name is None, but the given service_uuid is within ad.service_uuids
     @staticmethod
-    def name_match(bd:'BLEDevice', ad:'AdvertisementData', device_name:str, case_sensitive:bool, service_uuid:str|None) -> bool:
-        return ((bd.name is not None and (bd.name.startswith(device_name) if
-                    case_sensitive else bd.name.casefold().startswith(device_name.casefold()))) or
-                (ad.local_name is not None and (ad.local_name.startswith(device_name) if
-                    case_sensitive else ad.local_name.casefold().startswith(device_name.casefold()))) or
+    def name_match(bd:'BLEDevice', ad:'AdvertisementData', device_name:str, case_sensitive:bool, service_uuid:str|None, manufacturer_key:int|None) -> bool:
+        def manufacturer_key_match() -> bool:
+            # if given Advertisement data lists service_uuids and the service_uuid is given (not None) it has to be contained among the service_uuids provided by the service
+            # to match, thus this function
+            # returns True if service_uuid is None or ad.service_uuids is []
+            # or if service_uuid is in ad.service_uuids
+            return service_uuid is None or manufacturer_key is None or manufacturer_key in ad.manufacturer_data
+
+        return ((manufacturer_key_match() and (
+                    (bd.name is not None and (bd.name.startswith(device_name) if
+                        case_sensitive else bd.name.casefold().startswith(device_name.casefold()))) or
+                    (ad.local_name is not None and (ad.local_name.startswith(device_name) if
+                        case_sensitive else ad.local_name.casefold().startswith(device_name.casefold()))))) or
                 (ad.local_name is None and service_uuid is not None and
                     service_uuid.casefold() in (uuid.casefold() for uuid in ad.service_uuids)))
 
     # matches the discovered BLEDevice and AdvertisementData
     # returns True on success and False otherwise, as well as the service_uuid str of the matching device_description
     def description_match(self, bd:'BLEDevice', ad:'AdvertisementData',
-            device_descriptions:dict[str|None,set[str]|None], case_sensitive:bool) -> tuple[bool, str|None]:
-        for service_uuid, device_names in device_descriptions.items():
-            if device_names is None or any(self.name_match(bd,ad,device_name,case_sensitive, service_uuid) for device_name in device_names):
+            device_descriptions:tuple[dict[str|None,set[str]|None], dict[str, dict[str, int]]], case_sensitive:bool) -> tuple[bool, str|None]:
+        for service_uuid, device_names in device_descriptions[0].items():
+            if device_names is None or any(self.name_match(bd,ad,device_name,case_sensitive, service_uuid,
+                            (device_descriptions[1][service_uuid][device_name] if
+                                service_uuid in device_descriptions[1] and device_name in device_descriptions[1][service_uuid] else None))
+                    for device_name in device_names):
                 return True, service_uuid
         return False, None
 
 
     # returns discovered_bd and service_uuid on success, or None
     async def _scan(self,
-            device_descriptions:dict[str|None,set[str]|None],
+            device_descriptions:tuple[dict[str|None,set[str]|None], dict[str, dict[str, int]]],
             blacklist:set[str],
             case_sensitive:bool,
             scan_timeout:float,
             address:str|None) -> 'tuple[BLEDevice|None, str|None]':
         try:
             async with asyncio.timeout(scan_timeout):
-                async with BleakScanner() as scanner: # pyrefly: ignore[bad-context-manager] # ty: ignore[invalid-context-manager]
+                async with BleakScanner() as scanner: # pyrefly: ignore[bad-context-manager]
                     self._terminate_scan_event.clear()
                     async for bd, ad in scanner.advertisement_data():
                         if self._terminate_scan_event.is_set():
@@ -108,7 +129,7 @@ class BLE:
     # pylint: disable=too-many-positional-arguments
     # on success returns tuple of BleakClient, service UUID as str and device name
     async def _scan_and_connect(self,
-                device_descriptions:dict[str|None,set[str]|None],
+                device_descriptions:tuple[dict[str|None,set[str]|None], dict[str, dict[str, int]]],
                 blacklist:set[str], # client addresses to ignore
                 case_sensitive:bool,
                 disconnected_callback:Callable[[BleakClient], None]|None,
@@ -174,7 +195,7 @@ class BLE:
         return None
 
     def scan_and_connect(self,
-            device_descriptions: dict[str|None, set[str]|None],
+            device_descriptions: tuple[dict[str|None,set[str]|None], dict[str, dict[str, int]]],
             blacklist:set[str], # list of client addresses to ignore as they don't offer the required service
             case_sensitive:bool=True,
             disconnected_callback:Callable[[BleakClient], None]|None = None,
@@ -199,6 +220,9 @@ class BLE:
             return fut.result()
         except BleakBluetoothNotAvailableError:
             _log.error('Bluetooth is not supported, turned off or permission is denied')
+            return None, None, None
+        except BleakError as e:
+            _log.error('BLE exception: %s', e)
             return None, None, None
         except Exception: # pylint: disable=broad-except
             _log.error('exception in scan_and_connect: %s', fut.exception())
@@ -245,10 +269,6 @@ class ClientBLE(QObject):
     SCAN_BETWEEN_SCANS_MAX:Final[float] = 3     # maximum sleep between scans in seconds
 
 # NOTE: __slots__ are incompatible with multiple inheritance mixings in subclasses (e.g. with QObject)
-#    __slots__ = [ '_running', '_async_loop_thread', '_ble_client', '_connected_service_uuid', '_disconnected_event',
-#                    '_active_notification_uuids',
-#                    '_device_descriptions', '_notifications', '_writers', '_readers', '_heartbeat_frequency',
-#                    '_logging'  ]
 
     def __init__(self) -> None:
         super().__init__()
@@ -263,7 +283,8 @@ class ClientBLE(QObject):
         self._sleep_between_scans:float                      = self.SCAN_BETWEEN_SCANS_START
 
         # configuration
-        self._device_descriptions:dict[str|None, set[str]|None] = {}
+        self._device_descriptions:dict[str|None, set[str]|None] = {} # maps service UUIDs to a set of device name prefixes
+        self._device_manufacturer_keys:dict[str, dict[str, int]] = {} # maps a service UUID to a dict matching a name prefix to a mandatory advertisement manufacturer key
         self._notifications:dict[str, Callable[[BleakGATTCharacteristic, bytearray], None]] = {}
         self._writers:dict[str, list[str]] = {} # associates a service UUID with a list of write characteristics
         self._readers:dict[str, list[str]] = {} # associates a service UUID with a list of read characteristics
@@ -314,10 +335,11 @@ class ClientBLE(QObject):
             # scan and connect
             # NOTE: re-connecting a bleak client by address on reconnect can lead to instabilities thus we re-scan always
             service_uuid:str|None
+            connected:bool = False # set to True once the connected client offers the requested service
             self._connected_service_uuid = None
             self._connected_device_name = None
             self._ble_client, service_uuid, device_name = ble.scan_and_connect(
-                                    self._device_descriptions,
+                                    (self._device_descriptions, self._device_manufacturer_keys),
                                     blacklist,
                                     case_sensitive,
                                     self.disconnected_callback,
@@ -345,16 +367,23 @@ class ClientBLE(QObject):
                     self._connected_device_name = None
                 else:
                     # successfully connected
-                    self.on_connect()
+                    connected = True
             if self._ble_client is not None:
                 # start notifications
                 self.start_notifications()
+                if connected:
+                    # NOTE: on_connect() is signalled only after the notifications got established such that
+                    # implementations can already send commands expecting a notified response from on_connect()
+                    self.on_connect()
                 # await disconnect
                 self._disconnected_event.clear()
                 await self._disconnected_event.wait()
                 _log.debug('BLE reconnect')
-            await asyncio.sleep(self._sleep_between_scans)
-            self._sleep_between_scans = max(self._sleep_between_scans + self.SCAN_BETWEEN_SCANS_INC, self.SCAN_BETWEEN_SCANS_MAX)
+            try:
+                await asyncio.sleep(self._sleep_between_scans)
+                self._sleep_between_scans = max(self._sleep_between_scans + self.SCAN_BETWEEN_SCANS_INC, self.SCAN_BETWEEN_SCANS_MAX)
+            except Exception as e: # pylint: disable=broad-except
+                _log.warning(e)
 
     # release the async lock _disconnected_event after disconnect triggered to enable the automatic reconnect
     async def set_event(self) -> None:
@@ -370,14 +399,14 @@ class ClientBLE(QObject):
         if hasattr(self, '_async_loop_thread') and self._async_loop_thread is not None:
             asyncio.run_coroutine_threadsafe(self.set_event(), self._async_loop_thread.loop)
 
-    def send(self, message:bytes, response:bool = False, write_characteristic:str|None = None) -> None:
+    def send(self, message:bytes, response:bool = False, write_characteristic:str|None = None, chunk:int = 20) -> None:
         if self._ble_client is not None and self._connected_service_uuid is not None and self._connected_service_uuid in self._writers:
             if self._logging:
                 _log.debug('send to %s: %s', self._writers[self._connected_service_uuid], message)
             write_chars = self._writers[self._connected_service_uuid]
             wc:str|None = None
             if write_characteristic is None:
-                # if there is no explicit write_characteristic specified thus we write to the only registered as writer
+                # if there is no explicit write_characteristic specified thus we write to the only one registered as writer
                 if len(write_chars) == 1:
                     wc = write_chars[0]
             elif write_characteristic in write_chars:
@@ -388,7 +417,7 @@ class ClientBLE(QObject):
                 else:
                     _log.debug('send failed. Characteristic %s not registered for write for service %s', write_characteristic, self._connected_service_uuid)
             else:
-                ble.write(self._ble_client, wc, message, response)
+                ble.write(self._ble_client, wc, message, response, chunk)
 
     def read(self, read_characteristic:str|None = None) -> bytes|None:
         if self._ble_client is not None and self._connected_service_uuid is not None and self._connected_service_uuid in self._readers:
@@ -431,14 +460,21 @@ class ClientBLE(QObject):
                 coro = BleakScanner.discover(
                     timeout=scan_timeout,
                     return_adv=True)
-                res = asyncio.run_coroutine_threadsafe(
-                    coro,
-                    self._async_loop_thread.loop).result()
+                try:
+                    res = asyncio.run_coroutine_threadsafe(
+                        coro,
+                        self._async_loop_thread.loop).result()
+                except Exception:  # pylint: disable=broad-except
+                    # ble scan might have been canceled
+                    _log.debug('scan_ble canceled')
+                    return []
                 _log.debug('scan_ble ended')
                 if res:
                     return list(res.values())
         except BleakBluetoothNotAvailableError:
             _log.error('Bluetooth is not supported, turned off or permission is denied')
+        except BleakError as e:
+            _log.error('BLE exception: %s', e)
         except Exception as e:  # pylint: disable=broad-except
             _log.exception(e)
         return []
@@ -471,14 +507,16 @@ class ClientBLE(QObject):
             if self._ble_client is None:
                 ble.terminate_scan() # we stop ongoing scanning
             self._disconnect()
-            self._async_loop_thread = None
+            if self._async_loop_thread is not None:
+                del self._async_loop_thread
+                self._async_loop_thread = None
             self._ble_client = None
             self._connected_service_uuid = None
             self._connected_device_name = None
             _log.debug('BLE client stopped')
             self.on_stop()
         else:
-            _log.error('BLE client not running')
+            _log.debug('BLE client not running')
 
 
 
@@ -492,22 +530,31 @@ class ClientBLE(QObject):
     # clears device descriptions used to match services
     def init_device_description(self) -> None:
         self._device_descriptions = {}
+        self._device_manufacturer_keys = {}
 
-    # adds the device description (service UUID and name) to the list of matchers used to filter discovered
-    # clients. Any name added with to an associated UUID will create a match. Associating a service UUID with
+    # adds the device description (service UUID and name) to the dict of matchers used to filter discovered
+    # clients. Any name added to an associated UUID can result in a match by prefix with the discovered client names. Associating a service UUID with
     # an empty name (None) will match independent of the discovered clients name, as long as the a service with
-    # the specified service UUID is supported. The empty service UUID (None) matches with any discovered client of the associated names.
+    # the specified service UUID is supported. The empty service UUID (None) matches with any discovered client reporting any of the associated names (prefix match).
     # If both, serviceUUID and device name are not given (both set to None), any service matches.
     # The initial device description as generated on init_device_description() does not match anything.
-    def add_device_description(self, service_uuid:str|None = None, device_name:str|None = None) -> None:
+    # Note that the descriptions are processed in service_uuid insertion order, thus descriptions service_uuids inserted first match before those added later
+    # if device_manufacturer_key is given, that key needs to occur in the advertisement manufacture data
+    def add_device_description(self, service_uuid:str|None = None, device_name:str|None = None, device_manufacturer_key:int|None = None) -> None:
         if service_uuid is None and device_name is None:
-            self._device_descriptions = {}
+            self._device_descriptions = {None: None}
         elif device_name is None:
             self._device_descriptions[service_uuid] = None
         elif service_uuid not in self._device_descriptions:
             self._device_descriptions[service_uuid] = { device_name }
         elif self._device_descriptions[service_uuid] is not None:
             self._device_descriptions[service_uuid].add(device_name) # type:ignore[union-attr]
+        #
+        if service_uuid is not None and device_name is not None and device_manufacturer_key is not None:
+            if service_uuid not in self._device_manufacturer_keys:
+                self._device_manufacturer_keys[service_uuid] = { device_name: device_manufacturer_key }
+            else:
+                self._device_manufacturer_keys[service_uuid][device_name] = device_manufacturer_key
 
     def add_notify(self, notify_uuid:str, callback:'Callable[[BleakGATTCharacteristic, bytearray], None]') -> None:
         self._notifications[notify_uuid] = callback
@@ -526,6 +573,7 @@ class ClientBLE(QObject):
 
     def set_heartbeat(self, frequency:float) -> None:
         self._heartbeat_frequency = frequency
+
 
     # to be implemented by subclasses
 

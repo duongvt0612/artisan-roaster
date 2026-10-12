@@ -1,4 +1,24 @@
 #
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
+# LICENSE
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
 """qtsingleapplication.py
 Source: https://github.com/IARI/alsa_jack_gui
 Author: https://github.com/IARI
@@ -31,8 +51,8 @@ class QtSingleApplication(QApplication):
     def __init__(self, _id:str, _viewer_id:str, *argv: Any) -> None:
 
         if sys.platform.startswith('darwin') and mp.current_process().name == 'WebLCDs':
-            import AppKit # type: ignore[import-untyped] # ty:ignore[ignore] # pylint: disable=import-error
-            info = AppKit.NSBundle.mainBundle().infoDictionary()  # type:ignore[unused-ignore] # @UndefinedVariable # pylint: disable=maybe-no-member
+            import AppKit # type: ignore[import-untyped] # pylint: disable=import-error
+            info = AppKit.NSBundle.mainBundle().infoDictionary()  # type:ignore[attr-defined, unused-ignore] # @UndefinedVariable # pylint: disable=maybe-no-member
             info['LSBackgroundOnly'] = '1'
 
         super().__init__(*argv)

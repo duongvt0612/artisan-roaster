@@ -135,8 +135,6 @@ with patch('artisanlib.__version__', '2.8.4'), patch(
 ), patch(
     'plus.config.nickname', None
 ), patch(
-    'plus.config.passwd', None
-), patch(
     'plus.config.connected', False
 ), patch(
     'plus.config.app_window', None
@@ -201,7 +199,6 @@ def isolated_test_environment() -> Generator[None, None, None]:
         config_mock.post_compression_threshold = 500 # type: ignore[attr-defined]
         config_mock.access_token = None  # type: ignore[attr-defined]
         config_mock.nickname = None # type: ignore[attr-defined]
-        config_mock.passwd = None # type: ignore[attr-defined]
         config_mock.connected = False # type: ignore[attr-defined]
         config_mock.app_window = None # type: ignore[attr-defined]
 
@@ -502,7 +499,6 @@ class TestCredentialManagement:
             mock_config.access_token = 'test_token'
             mock_config.refresh_token = 'refresh_token'
             mock_config.nickname = 'test_nickname'
-            mock_config.passwd = 'test_password'
             mock_config.account_nr = 123
 
             # Act
@@ -517,7 +513,6 @@ class TestCredentialManagement:
             mock_config.set_token.assert_called_once_with(None)
             assert mock_config.refresh_token is None
             assert mock_config.nickname is None
-            assert mock_config.passwd is None
             assert mock_config.account_nr is None
             assert mock_app_window.plus_account is None
             assert mock_config.passwd is None
@@ -532,7 +527,6 @@ class TestCredentialManagement:
             mock_config.app_window = mock_app_window
             mock_config.access_token = 'test_token'
             mock_config.nickname = 'test_nickname'
-            mock_config.passwd = 'test_password'
             mock_config.account_nr = 123
 
             # Act
@@ -542,7 +536,6 @@ class TestCredentialManagement:
             mock_delete_password.assert_not_called()
             assert mock_config.set_token.call_args.args == (None,) if hasattr(mock_config, 'set_token') else mock_config.access_token is None
             assert mock_config.nickname is None
-            assert mock_config.passwd is None
             assert mock_config.account_nr is None
 
     def test_clear_credentials_keychain_exception_handling(self, mock_app_window: Mock) -> None:
@@ -1111,7 +1104,7 @@ class TestHeaderGeneration:
 
             # Assert
             assert 'user-agent' in headers
-            assert 'Artisan/2.8.0' in headers['user-agent']
+            assert 'artisan/2.8.0' in headers['user-agent']
             assert 'macOS' in headers['user-agent']
             assert 'Accept-Charset' in headers
             assert headers['Accept-Charset'] == 'utf-8'

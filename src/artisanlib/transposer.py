@@ -1,17 +1,27 @@
 #
 # ABOUT
-# Artisan Profile Transposer
-
+# artisan scope profile transposer
+#
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
 # LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
-
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
 # AUTHOR
 # Marko Luther, 2023
 
@@ -309,11 +319,12 @@ class profileTransformatorDlg(ArtisanDialog):
             for w in self.phases_target_widgets_time:
                 ri:int|None = None
                 if w is not None:
-                    try:
-                        txt = w.text()
-                        ri = stringtoseconds(txt)
-                    except Exception as e: # pylint: disable=broad-except
-                        _log.error(e) # widget should not allow for malformed time string input on which stringtoseconds raises an exception
+                    txt = w.text()
+                    if txt != '':
+                        try:
+                            ri = stringtoseconds(txt)
+                        except Exception as e: # pylint: disable=broad-except
+                            _log.error(e) # widget should not allow for malformed time string input on which stringtoseconds raises an exception
                 res_times.append(ri)
         if self.phases_target_widgets_percent is not None:
             for w in self.phases_target_widgets_percent:

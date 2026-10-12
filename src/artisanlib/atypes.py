@@ -1,17 +1,27 @@
 #
 # ABOUT
-# Artisan Types
-
+# artisan types
+#
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
 # LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
-
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
 # AUTHOR
 # Marko Luther, 2023
 
@@ -26,32 +36,33 @@ if TYPE_CHECKING:
     from plus.stock import BlendList, Blend
 
 class ComputedProfileInformation(TypedDict, total=False):
+    CHARGE_time: float # time in seconds since start of recording (roastdate/roastepoch)
     CHARGE_ET: float
     CHARGE_BT: float
     TP_idx: int
-    TP_time: float
+    TP_time: float # time in seconds since CHARGE
     TP_ET: float
     TP_BT: float
     MET: float
-    DRY_time: float
+    DRY_time: float # time in seconds since CHARGE
     DRY_ET: float
     DRY_BT: float
-    FCs_time: float
+    FCs_time: float # time in seconds since CHARGE
     FCs_ET: float
     FCs_BT: float
-    FCe_time: float
+    FCe_time: float # time in seconds since CHARGE
     FCe_ET: float
     FCe_BT: float
-    SCs_time: float
+    SCs_time: float # time in seconds since CHARGE
     SCs_ET: float
     SCs_BT: float
-    SCe_time: float
+    SCe_time: float # time in seconds since CHARGE
     SCe_ET: float
     SCe_BT: float
-    DROP_time: float
+    DROP_time: float # time in seconds since CHARGE
     DROP_ET: float
     DROP_BT: float
-    COOL_time: float
+    COOL_time: float # time in seconds since CHARGE
     COOL_ET: float
     COOL_BT: float
     totaltime: float
@@ -132,6 +143,7 @@ class ProfileData(TypedDict, total=False):
     version: str
     revision: str
     build: str
+    signature: str
     artisan_os: str
     artisan_os_version: str
     artisan_os_arch: str
@@ -154,6 +166,7 @@ class ProfileData(TypedDict, total=False):
     plus_blend_spec_labels: list[str]
     beans: str
     weight: list[float|str] # NOTE: internally weight is a typed tuple
+    end_weight_est: int
     volume: list[float|str] # NOTE: internally volume is a typed tuple
     density: list[float|str] # NOTE: internally density is a typed tuple
     density_roasted: list[float|str] # NOTE: internally density_roasted is a typed tuple
@@ -201,6 +214,7 @@ class ProfileData(TypedDict, total=False):
     default_etypes: list[bool]
     default_etypes_set: list[int]
     etypes: list[str]
+    eventsliderunits: list[str]
     cuppingnotes: str
     roastingnotes: str
     timex: list[float]
@@ -332,6 +346,7 @@ class ProfileData(TypedDict, total=False):
     bbp_dropbt: float
     bbp_dropet: float
     bbp_drop_to_end: float
+    hash: str
 
 class ExtraDeviceSettings(TypedDict):
     extradevices           : list[int]
@@ -361,6 +376,7 @@ class ExtraDeviceSettings(TypedDict):
     extramarkersizes2      : list[float]
     default_etypes_set     : list[int]
     etypes                 : list[str]
+    eventsliderunits       : list[str]
 
 Palette = tuple[
     list[int],    # 0: event button types
@@ -540,6 +556,7 @@ class SerialSettings(TypedDict):
     stopbits: int
     parity: str
     timeout: float
+    clear_HUPCL: bool # if True, try to prevent toggling the RTS/DTR lines on opening the port to prevent to trigger a reboot on the connected device (ESP32/Orbiter
 
 class BTBreakParams(TypedDict):
     delay: list[list[float]]

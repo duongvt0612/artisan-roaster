@@ -1,0 +1,21 @@
+name: Check metainfo version
+
+on:
+  push:
+    tags:
+      - v*
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: |
+          TAG_VERSION=`echo "${GITHUB_REF_NAME}" | sed 's/^v//'`
+          METAINFO_VERSION=`cat src/debian/usr/share/metainfo/org.artisan_scope.artisan.metainfo.xml | sed 's/^\s*<release.*version="\([^"]\+\)".*$/\1/p;d' | head -n1`
+          echo "tag: ${TAG_VERSION}"
+          echo "metainfo: ${METAINFO_VERSION}"
+          if [ "${TAG_VERSION}" != "${METAINFO_VERSION}" ]; then
+            echo "version from tag different from metainfo, please check you updated the metainfo file for this version tag" 1>&2
+            exit 1
+          fi

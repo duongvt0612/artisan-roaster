@@ -2,25 +2,31 @@
 #
 # config.py
 #
-# Copyright (c) 2023, Paul Holleis, Marko Luther
-# All rights reserved.
-#
-#
 # ABOUT
-# This module connects to the artisan.plus inventory management service
-
-# LICENSE
-# This program or module is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as published
-# by the Free Software Foundation, either version 2 of the License, or
-# version 3 of the License, or (at your option) any later version. It is
-# provided for educational purposes and is distributed in the hope that
-# it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
-# the GNU General Public License for more details.
+# This module connects to the artisan platform
 #
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# COPYRIGHT (C) 2010-2026 The artisan team represented by
+#   Marko Luther <marko.luther@gmx.net> (maintainer) and all contributors
+#
+# LICENSE
+# This program or module is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# MAINTAINER
+# Marko Luther, 2026
+#
+# AUTHOR
+# Marko Luther
 
 import os
 from typing import Final, TYPE_CHECKING
@@ -29,7 +35,7 @@ if TYPE_CHECKING:
     from artisanlib.main import ApplicationWindow # pylint: disable=unused-import
 
 # Constants
-app_name: Final[str] = 'artisan.plus'
+app_name: Final[str] = 'artisan.plus' # don't rename as this holds the keychain credentials
 profile_ext: Final[str] = 'alog'
 uuid_tag: Final[str] = 'roastUUID' # as used in .alog profiles, send as 'roast_id' as part of the sync record to the server
 schedule_uuid_tag: Final[str] = 'scheduleID' # send as 's_item_id' as part of the sync record to the server
@@ -180,13 +186,13 @@ prepared_items_cache: Final[str] = 'prepared'
 hidden_items_cache: Final[str] = 'hidden'
 
 # the uuid register that associates UUIDs with local filepaths where to
-# locate the corresponding Artisan profiles
+# locate the corresponding artisan profiles
 uuid_cache: Final[str] = 'uuids'
 
 # the account register that associates account ids with a local running
 # account number
-# Note: the account_cache file is shared between the main Artisan and the
-# ArtisanViewer app, protected by a filelock
+# Note: the account_cache file is shared between the main artisan and the
+# artisanViewer app, protected by a filelock
 account_cache: Final[str] = 'account'
 
 # the account nr locally associated to the current account, or None
@@ -194,19 +200,19 @@ account_nr: int|None = None
 
 # the sync register that associates UUIDs with last known modification dates
 # modified_at for profiles uploaded/synced automatically
-# Note: the sync_cache file is shared between the main Artisan and the
-# ArtisanViewer app, protected by a filelock
+# Note: the sync_cache file is shared between the main artisan and the
+# artisanViewer app, protected by a filelock
 sync_cache: Final[str] = 'sync'
 
 # the outbox queues the outgoing PUSH/PUT data requests
-# Note: the outbox_cache file is shared between the main Artisan and the
-# ArtisanViewer app, NOT protected by an extra filelock
+# Note: the outbox_cache file is shared between the main artisan and the
+# artisanViewer app, NOT protected by an extra filelock
 outbox_cache: Final[str] = 'outbox'
 
 
 # Runtime variables
 
-app_window: 'ApplicationWindow|None' = None  # handle to the main Artisan application window
+app_window: 'ApplicationWindow|None' = None  # handle to the main artisan application window
 #   if set, app_window.plus_login holds the current login account if any and
 #   app_window.updatePlusIcon() is a function that updates the toolbar
 #   plus service connection indicator icon

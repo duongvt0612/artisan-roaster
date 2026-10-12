@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8">
+<meta name="description" content="Artisan roast report">
+<meta name="author" content="Artisan Roaster Scope">
+<title>$doc</title>
+<style type="text/css">
+body {
+    background: #ffffff;
+    color: #0a2b4d;
+}
+.page-break {
+  break-after: page;
+}
+svg {
+  left: 1px;
+  top: 1px;   
+  width: 100%;
+}
+a {
+  color: #2966a3;
+}
+h1 {
+  color: #2978a3;
+}
+td { 
+  vertical-align: top;
+  padding-top: 0px;
+  padding-left:  7px;
+  padding-right:  7px;
+  padding-bottom: 0px;
+}
+th {
+  text-align: right;
+  vertical-align: top;
+}
+</style>
+</head>
+<body>
+<center>
+<h1>$title</h1>
+</center>
+<table cellpadding="10" width="80%">
+<tr>
+<td>
+<table width="230">
+<tr>
+<th>$datatime_label</th>
+<td>$datetime</td>
+</tr>
+<tr>
+<th>$beans_label</th>
+<td>$beans</td>
+</tr>
+<tr>
+<th>$size_label</th>
+<td>$size</td>
+</tr>
+<tr>
+<th>$weight_label</th>
+<td>$weight</td>
+</tr>
+<tr>
+<th>$defects_label</th>
+<td>$defects</td>
+</tr>
+<tr>
+<th>$volume_label</th>
+<td>$volume</td>
+</tr>
+<tr>
+<th>$density_label</th>
+<td>$density</td>
+</tr>
+<tr>
+<th>$moisture_label</th>
+<td>$moisture</td>
+</tr>
+<tr>
+<th>$humidity_label</th>
+<td>$humidity</td>
+</tr>
+<tr>
+<th>$color_label</th>
+<td>$color</td>
+</tr>
+<tr><th></th><td></td></tr>
+<tr><th></th><td></td></tr>
+<tr>
+<th>$cup_label</th>
+<td>$cup</td>
+</tr>
+</table>
+</td>
+<td>
+<table width="230">
+<tr>
+<th>$charge_label</th>
+<td>$charge</td>
+</tr>
+<tr>
+<th>$TP_label</th>
+<td>$TP</td>
+</tr>
+<tr>
+<th>$DRY_label</th>
+<td>$DRY</td>
+</tr>
+<tr>
+<th>$FCs_label</th>
+<td>$FCs</td>
+</tr>
+<tr>
+<th>$FCe_label</th>
+<td>$FCe</td>
+</tr>
+<tr>
+<th>$SCs_label</th>
+<td>$SCs</td>
+</tr>
+<tr>
+<th>$SCe_label</th>
+<td>$SCe</td>
+</tr>
+<tr>
+<th>$drop_label</th>
+<td>$drop</td>
+</tr>
+<tr>
+<th>$cool_label</th>
+<td>$cool</td>
+</tr>
+<tr>
+<th>$met_label</th>
+<td>$met</td>
+</tr>
+<tr>
+<th>$ror_label</th>
+<td>$ror</td>
+</tr>
+<tr>
+<th>$etbta_label</th>
+<td>$etbta</td>
+</tr>
+<tr>
+<th>$cm_label</th>
+<td>$cm_tuple</td>
+</tr>
+<tr>
+<th>$energy_label</th>
+<td>$energy</td>
+</tr>
+<tr>
+<th>$CO2_label</th>
+<td>$CO2</td>
+</tr>
+</table>
+</td>
+<td>
+<table width="230">
+<tr>
+<th>$dry_phase_label</th>
+<td>$dry_phase</td>
+</tr>
+<tr>
+<th>$mid_phase_label</th>
+<td>$mid_phase</td>
+</tr>
+<tr>
+<th>$finish_phase_label</th>
+<td>$finish_phase</td>
+</tr>
+<tr>
+<th>$cool_phase_label</th>
+<td>$cool_phase</td>
+</tr>
+<tr><th></th><td></td></tr>
+<tr><th></th><td></td></tr>
+<tr>
+<th>$background_label</th>
+<td>$background</td>
+</tr>
+<tr>
+<th>$alarms_label</th>
+<td>$alarms</td>
+</tr>
+<tr><th></th><td></td></tr>
+<tr><th></th><td></td></tr>
+<tr>
+<th>$roaster_label</th>
+<td>$roaster</td>
+</tr>
+<tr>
+<th>$operator_label</th>
+<td>$operator</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+<br>
+<p style="text-align:center;">
+$graph_image
+</p>
+<table style="width: 100%;">
+<tr>
+<td align="center">
+<br>
+<div style="display: $show_special_events;">
+<b>$specialevents_label</b><br>
+$specialevents
+</div>
+</td>
+</tr>
+<tr><td><br></td></tr>
+<tr>
+<td>
+<center><b>$roasting_notes_label</b></center>
+<center><span style="width:80%">$roasting_notes$roast_attributes</span></center>
+</td>
+</tr>
+</table>
+
+<span style="display: $show_cupping;">
+<div class="page-break"></div>
+<p style="text-align:center;">
+$flavor_image
+</p>
+</span>
+</body>
+</html>
