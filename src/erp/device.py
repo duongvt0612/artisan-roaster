@@ -27,6 +27,8 @@ import socket
 import uuid
 from typing import Any, Final, Protocol
 
+from erp import config
+
 _log: Final[logging.Logger] = logging.getLogger(__name__)
 
 KEY_DEVICE_ID: Final[str] = 'deviceId'
@@ -82,10 +84,19 @@ def device_name() -> str:
     return (name or 'Artisan PC')[:MAX_NAME_LEN]
 
 
+def last_roaster_key() -> str:
+    """The settings key of the roaster chosen last time: one per environment (a roaster of staging means nothing on production)."""
+    try:
+        env = config.environment()
+    except config.ConfigError:
+        env = 'unconfigured'
+    return f'{KEY_LAST_ROASTER}.{env}'
+
+
 def last_roaster_id(store:Store|None = None) -> str|None:
     try:
         st = store if store is not None else _default_store()
-        value = st.value(KEY_LAST_ROASTER, '')
+        value = st.value(last_roaster_key(), '')
         return value.strip() if isinstance(value, str) and value.strip() else None
     except Exception as e: # pylint: disable=broad-except
         _log.info('settings store not available: %s', type(e).__name__)
@@ -95,6 +106,6 @@ def last_roaster_id(store:Store|None = None) -> str|None:
 def set_last_roaster_id(roaster_id:str|None, store:Store|None = None) -> None:
     try:
         st = store if store is not None else _default_store()
-        st.setValue(KEY_LAST_ROASTER, roaster_id or '')
+        st.setValue(last_roaster_key(), roaster_id or '')
     except Exception as e: # pylint: disable=broad-except
         _log.info('settings store not available: %s', type(e).__name__)

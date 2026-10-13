@@ -66,6 +66,10 @@ else
     ln -s /usr/lib/libusb-1.0.so.0
 fi
 
+echo "************* erp-config **************"
+python3 make-erp-config.py
+if [ $? -ne 0 ]; then echo "** Failed: set ERP_API_BASE_URL and ERP_ENVIRONMENT (see make-erp-config.py)"; exit 1; else echo "** Success"; fi
+
 pyinstaller -y --log-level=INFO artisan-linux.spec
 
 mv dist/artisan dist/artisan.d

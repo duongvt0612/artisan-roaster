@@ -53,6 +53,10 @@ sleep .3 # sometimes it takes a little for dist to get really empty
 #python3 setup-macos3.py py2app 2>&1 | egrep -v '^(creating|copying file|byte-compiling|locate|ADD INFO|changefunc)'
 #if [ ${PIPESTATUS[0]} -ne 0 ]; then echo "Failed in py2app"; exit 1; else (echo "** Finished py2app"); fi
 
+echo "************* erp-config **************"
+python3 make-erp-config.py
+if [ $? -ne 0 ]; then echo "** Failed: set ERP_API_BASE_URL and ERP_ENVIRONMENT (see make-erp-config.py)"; exit 1; else echo "** Success"; fi
+
 echo "************* pyinstaller **************"
 pyinstaller -y --log-level=INFO artisan-mac.spec
 

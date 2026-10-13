@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from erp import client, gate
+from erp import client, config, gate
 
 
 @pytest.fixture
@@ -538,3 +538,54 @@ class TestUploads:
 
     def test_events_before_anything_is_set_up_are_harmless(self) -> None:
         gate._on_upload_event('changed', None, '')  # pylint: disable=protected-access
+
+
+class TestServerConfiguration:
+    """A build without an ERP server never reaches the login: it says so and stays out."""
+
+    @pytest.fixture(autouse=True)
+    def _fresh(self) -> Generator[None, None, None]:
+        gate._reset_state()  # pylint: disable=protected-access
+        yield
+        gate._reset_state()  # pylint: disable=protected-access
+
+    @staticmethod
+    def _unconfigured(monkeypatch:pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv(config.ENV_API_URL, raising=False)
+        monkeypatch.delenv(config.ENV_ENVIRONMENT, raising=False)
+        monkeypatch.setattr(config, '_config_file', lambda: __import__('pathlib').Path('/nonexistent/erp-config.json'))
+        config.reset_cache()
+
+    def test_a_build_without_a_server_is_refused_before_anything_is_asked(self, aw:MagicMock, session:MagicMock, monkeypatch:pytest.MonkeyPatch) -> None:
+        self._unconfigured(monkeypatch)
+        with patch.object(gate, 'show_config_error') as shown, patch.object(gate, 'erp_login') as login:
+            assert gate.require_login(aw) is False
+        shown.assert_called_once()
+        assert 'chưa được cấu hình máy chủ ERP' in shown.call_args.args[0].message
+        session.restore.assert_not_called()   # the stored token is not even looked up
+        login.assert_not_called()
+
+    def test_the_error_box_tells_what_is_wrong(self) -> None:
+        with patch.object(gate, 'QMessageBox') as box_cls:
+            gate.show_config_error(config.ConfigError('chưa cấu hình'))
+        box = box_cls.return_value
+        assert box.setInformativeText.call_args.args[0] == 'chưa cấu hình'
+        box.exec.assert_called_once()
+
+    def test_a_test_environment_is_in_the_title(self, monkeypatch:pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv(config.ENV_ENVIRONMENT, 'staging')
+        config.reset_cache()
+        assert gate.window_title_suffix() == ' [STAGING]'
+
+    def test_production_has_no_tag(self) -> None:
+        assert gate.window_title_suffix() == ''
+
+    def test_the_tag_comes_before_the_roaster(self, monkeypatch:pytest.MonkeyPatch, aw:MagicMock, roaster_env:SimpleNamespace) -> None:
+        monkeypatch.setenv(config.ENV_ENVIRONMENT, 'staging')
+        config.reset_cache()
+        FakeDialog.script = [{'accept': True, 'claim': _claim(), 'roaster': _roaster()}]
+        gate.require_roaster(aw)
+        manager = roaster_env.manager_cls.return_value
+        manager.state = LeaseState.HELD
+        manager.roaster_name = 'Máy Rang Nhỏ (ROAST-01)'
+        assert gate.window_title_suffix() == ' [STAGING] · Máy rang: Máy Rang Nhỏ (ROAST-01)'

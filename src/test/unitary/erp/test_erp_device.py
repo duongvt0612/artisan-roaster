@@ -3,7 +3,9 @@
 import uuid
 from typing import Any
 
-from erp import device
+import pytest
+
+from erp import config, device
 
 
 class MemStore:
@@ -72,3 +74,36 @@ def test_last_roaster_roundtrip() -> None:
     assert device.last_roaster_id(store) == 'eq-1'
     device.set_last_roaster_id(None, store)
     assert device.last_roaster_id(store) is None
+
+
+def test_the_remembered_roaster_is_kept_per_environment(monkeypatch:pytest.MonkeyPatch) -> None:
+    store = MemStore()
+    monkeypatch.setenv(config.ENV_ENVIRONMENT, 'staging')
+    config.reset_cache()
+    device.set_last_roaster_id('eq-staging', store)
+    monkeypatch.setenv(config.ENV_ENVIRONMENT, 'production')
+    config.reset_cache()
+    assert device.last_roaster_id(store) is None            # a roaster of the test server means nothing here
+    device.set_last_roaster_id('eq-prod', store)
+    assert device.last_roaster_id(store) == 'eq-prod'
+    monkeypatch.setenv(config.ENV_ENVIRONMENT, 'staging')
+    config.reset_cache()
+    assert device.last_roaster_id(store) == 'eq-staging'
+
+
+def test_the_pc_keeps_one_device_id_for_every_environment(monkeypatch:pytest.MonkeyPatch) -> None:
+    store = MemStore()
+    monkeypatch.setenv(config.ENV_ENVIRONMENT, 'staging')
+    config.reset_cache()
+    first = device.device_id(store)
+    monkeypatch.setenv(config.ENV_ENVIRONMENT, 'production')
+    config.reset_cache()
+    assert device.device_id(store) == first
+
+
+def test_without_a_server_the_key_is_still_defined(monkeypatch:pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(config.ENV_API_URL, raising=False)
+    monkeypatch.delenv(config.ENV_ENVIRONMENT, raising=False)
+    monkeypatch.setattr(config, '_config_file', lambda: __import__('pathlib').Path('/nonexistent/erp-config.json'))
+    config.reset_cache()
+    assert device.last_roaster_key().endswith('.unconfigured')

@@ -146,8 +146,19 @@ class TestQueue:
         queue.cleanup_orphans()
         assert [n for n in names(queue) if not n.endswith('.json')] == []   # and the orphan content is cleaned
 
-    def test_default_directory_is_under_the_data_directory(self) -> None:
-        assert attachments.default_directory().endswith(attachments.QUEUE_DIR_NAME)
+    def test_default_directory_is_under_the_data_directory_and_the_environment(self) -> None:
+        assert attachments.default_directory().endswith(os.path.join(attachments.QUEUE_DIR_NAME, 'production'))
+
+    def test_each_environment_has_a_queue_of_its_own(self, monkeypatch:pytest.MonkeyPatch) -> None:
+        from erp import config
+        monkeypatch.setenv(config.ENV_ENVIRONMENT, 'staging')
+        config.reset_cache()
+        staging = attachments.default_directory()
+        monkeypatch.setenv(config.ENV_ENVIRONMENT, 'production')
+        config.reset_cache()
+        production = attachments.default_directory()
+        assert staging != production and os.path.dirname(staging) == os.path.dirname(production)   # same parent, different folder
+        assert staging.endswith('staging') and production.endswith('production')
 
 
 def uploader(queue:UploadQueue, api:FakeApi) -> tuple[Uploader, list[tuple[str, Job|None, str]]]:

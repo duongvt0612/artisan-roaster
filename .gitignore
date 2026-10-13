@@ -83,3 +83,5 @@ Thumbs.db
 #doc/help_dialogs/Output_html/[!_]*.html
 
 .worktrees
+# the ERP server of a build (written by src/make-erp-config.py; only erp-config.example.json is tracked)
+src/erp-config.json

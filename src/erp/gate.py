@@ -69,8 +69,24 @@ def confirm_logout(aw:'ApplicationWindow') -> bool:
     return box.clickedButton() is yes
 
 
+def show_config_error(error:config.ConfigError) -> None:
+    """This build has no (valid) ERP server: tells so, in plain words. There is nothing the user can do but install the right build."""
+    box = QMessageBox()
+    box.setIcon(QMessageBox.Icon.Critical)
+    box.setWindowTitle('ERP')
+    box.setText(QApplication.translate('ERP', 'Không thể kết nối tới ERP'))
+    box.setInformativeText(error.message)
+    box.exec()
+
+
 def require_login(aw:'ApplicationWindow') -> bool:
     """Returns True only if the user is logged in to the ERP."""
+    try:
+        config.check() # which server this build talks to: never guessed
+    except config.ConfigError as e:
+        _log.info('no usable ERP server in this build: %s', e.message)
+        show_config_error(e)
+        return False
     while True:
         try:
             if session.restore():
@@ -213,9 +229,11 @@ def _install_banner(aw:'ApplicationWindow') -> None:
 
 def window_title_suffix() -> str:
     """Text appended to Artisan's window title: which roaster this session holds. Always visible, even if the banner is overlooked."""
+    label = config.environment_label()
+    tag = f' [{label}]' if label else '' # a test environment is always visible in the title
     manager = _state.manager
     if manager is None:
-        return ''
+        return tag
     name = manager.roaster_name
     if manager.state is LeaseState.LOST:
         text = QApplication.translate('ERP', ' · KHÔNG CÒN GIỮ MÁY {0}').format(name)
@@ -223,7 +241,7 @@ def window_title_suffix() -> str:
         text = QApplication.translate('ERP', ' · Máy rang: {0} (mất kết nối ERP)').format(name)
     else:
         text = QApplication.translate('ERP', ' · Máy rang: {0}').format(name)
-    return text + roast_flow.title_suffix()
+    return tag + text + roast_flow.title_suffix()
 
 
 def _refresh_title() -> None:

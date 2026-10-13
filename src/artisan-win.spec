@@ -147,6 +147,11 @@ hiddenimports_list=['charset_normalizer.md__mypyc', # part of requests 2.28.2 # 
                             ]
 
 datas = collect_data_files('bleak', subdir=r'backends\winrt')
+# the ERP server of this build (written by make-erp-config.py): an installer that does not know its server is never made
+if not os.path.exists('erp-config.json'):
+    raise SystemExit('erp-config.json is missing: run "python3 make-erp-config.py --url <ERP API URL> --env <production|staging|...>" '
+                     'or set ERP_API_BASE_URL and ERP_ENVIRONMENT before building')
+datas += [(r'erp-config.json', '.')]
 
 binaries = collect_dynamic_libs('bleak')
 block_cipher = None

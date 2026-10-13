@@ -13,7 +13,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from PyQt6.QtWidgets import QApplication, QDialog  # noqa: E402
 
-from erp import roasters, roaster_dialog  # noqa: E402
+from erp import device, roasters, roaster_dialog  # noqa: E402
 from erp.roasters import Claim, Holder, Roaster  # noqa: E402
 
 
@@ -133,7 +133,7 @@ class TestHelpers:
 class TestList:
     def test_shows_every_roaster_and_preselects_the_last_free_one(self, qapp:QApplication) -> None:
         store = MemStore()
-        store.data['lastRoasterId'] = 'b'
+        store.data[device.last_roaster_key()] = 'b'
         d = make(qapp, FakeApi([roaster('a', 'ROAST-01'), roaster('b', 'ROAST-02'), roaster('c', 'ROAST-03', free=False)]), store=store)
         assert d.list.count() == 3
         assert d._current_id() == 'b'  # pylint: disable=protected-access
@@ -224,7 +224,7 @@ class TestChoose:
         assert api.claim_calls == [{'id': 'b', 'session_id': 's1', 'device_id': 'd1', 'device_name': 'PC-TEST'}]
         assert d.roaster is not None and d.roaster.id == 'b'
         assert d.claim is not None and d.claim.version == 7
-        assert store.data['lastRoasterId'] == 'b'  # remembered for next time
+        assert store.data[device.last_roaster_key()] == 'b'  # remembered for next time
 
     def test_occupied_in_the_meantime_shows_who_and_stays_open(self, qapp:QApplication) -> None:
         api = FakeApi([roaster('a', 'ROAST-01')])

@@ -113,8 +113,13 @@ EXCLUDES = [
     'PyQt6.QtWebEngineQuick'
 ]
 
+# the ERP server of this build (written by make-erp-config.py): an installer that does not know its server is never made
+if not os.path.exists('erp-config.json'):
+    raise SystemExit('erp-config.json is missing: run "python3 make-erp-config.py --url <ERP API URL> --env <production|staging|...>" '
+                     'or set ERP_API_BASE_URL and ERP_ENVIRONMENT before building')
 
 DATA_FILES = [
+    (r'erp-config.json', '.'),
 #    (os.path.join(get_package_paths('PyQt6')[1], 'Qt6/translations/qtwebengine_locales/en-US.pak'), 'PyQt6/Qt6/translations/qtwebengine_locales')
 ]
 

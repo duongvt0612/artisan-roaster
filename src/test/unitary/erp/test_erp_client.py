@@ -34,10 +34,6 @@ USER = {'id': 'u1', 'username': 'admin', 'fullName': 'Admin', 'roles': []}
 
 
 class TestConfig:
-    def test_default_base_url_is_production(self, monkeypatch:pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv('ERP_API_BASE_URL', raising=False)
-        assert config.get_api_base_url() == 'https://erp-api.codecoffee.vn/api'
-
     def test_env_override_strips_trailing_slash(self, monkeypatch:pytest.MonkeyPatch) -> None:
         monkeypatch.setenv('ERP_API_BASE_URL', 'http://localhost:10301/api/')
         assert config.get_api_base_url() == 'http://localhost:10301/api'

@@ -36,7 +36,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import Any, Final
 
-from erp import roasters, rounds
+from erp import config, roasters, rounds
 
 _log: Final[logging.Logger] = logging.getLogger(__name__)
 
@@ -54,7 +54,8 @@ def backoff_seconds(attempts:int) -> float:
 
 
 def default_directory() -> str:
-    """<Artisan's local data directory>/erp_upload_queue (next to the settings, survives restarts and crashes)."""
+    """<Artisan's local data directory>/erp_upload_queue/<environment>: next to the settings, survives restarts and crashes, and a file
+    waiting for one ERP is never sent to another one (the batch ids only mean something to the ERP they come from)."""
     base:str|None = None
     try:
         from artisanlib.util import getDataDirectory # pylint: disable=import-outside-toplevel
@@ -63,7 +64,11 @@ def default_directory() -> str:
         _log.info('no data directory: %s', type(e).__name__)
     if not base:
         base = os.path.join(os.path.expanduser('~'), '.lvg-artisan')
-    return os.path.join(base, QUEUE_DIR_NAME)
+    try:
+        env = config.environment()
+    except config.ConfigError:
+        env = 'unconfigured'
+    return os.path.join(base, QUEUE_DIR_NAME, env)
 
 
 @dataclass

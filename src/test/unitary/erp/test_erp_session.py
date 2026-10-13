@@ -45,7 +45,7 @@ def _result(access:str = 'a1', refresh:str = 'r1') -> client.AuthResult:
 
 
 def _stored(kr:FakeKeyring) -> dict[str, str]:
-    return {key: value for (service, key), value in kr.store.items() if service == config.app_name}
+    return {key: value for (service, key), value in kr.store.items() if service == config.keyring_service()}
 
 
 class TestLogin:
@@ -67,8 +67,8 @@ class TestLogin:
         assert _stored(kr) == {'refresh_token': 'r1', 'username': 'admin'}
 
     def test_login_without_remember_removes_previous_stored_token(self, kr:FakeKeyring) -> None:
-        kr.store[(config.app_name, 'refresh_token')] = 'old'
-        kr.store[(config.app_name, 'username')] = 'old_user'
+        kr.store[(config.keyring_service(), 'refresh_token')] = 'old'
+        kr.store[(config.keyring_service(), 'username')] = 'old_user'
         s = Session()
         with patch('erp.session.client.login', return_value=_result()):
             s.login('admin', 'secret1', remember=False)
@@ -99,7 +99,7 @@ class TestRestore:
         assert not s.is_authenticated
 
     def test_success(self, kr:FakeKeyring) -> None:
-        kr.store[(config.app_name, 'refresh_token')] = 'r1'
+        kr.store[(config.keyring_service(), 'refresh_token')] = 'r1'
         s = Session()
         with patch('erp.session.client.refresh', return_value=_result('a2', 'r1')) as refresh:
             assert s.restore() is True
@@ -108,15 +108,15 @@ class TestRestore:
         assert s.access_token == 'a2'
 
     def test_rotated_refresh_token_is_stored(self, kr:FakeKeyring) -> None:
-        kr.store[(config.app_name, 'refresh_token')] = 'r1'
+        kr.store[(config.keyring_service(), 'refresh_token')] = 'r1'
         s = Session()
         with patch('erp.session.client.refresh', return_value=_result('a2', 'r2')):
             s.restore()
         assert _stored(kr)['refresh_token'] == 'r2'
 
     def test_invalid_session_clears_stored_token_but_keeps_username(self, kr:FakeKeyring) -> None:
-        kr.store[(config.app_name, 'refresh_token')] = 'r1'
-        kr.store[(config.app_name, 'username')] = 'admin'
+        kr.store[(config.keyring_service(), 'refresh_token')] = 'r1'
+        kr.store[(config.keyring_service(), 'username')] = 'admin'
         s = Session()
         with patch('erp.session.client.refresh', side_effect=client.ErpAuthError('invalid_session', 'expired')):
             assert s.restore() is False
@@ -125,7 +125,7 @@ class TestRestore:
 
     @pytest.mark.parametrize('kind', ['network', 'server', 'rate_limited'])
     def test_transient_errors_propagate_and_keep_the_stored_token(self, kr:FakeKeyring, kind:Any) -> None:
-        kr.store[(config.app_name, 'refresh_token')] = 'r1'
+        kr.store[(config.keyring_service(), 'refresh_token')] = 'r1'
         s = Session()
         with patch('erp.session.client.refresh', side_effect=client.ErpAuthError(kind, 'down')), pytest.raises(client.ErpAuthError) as exc:
             s.restore()
@@ -157,13 +157,42 @@ class TestLogoutAndClear:
         logout.assert_not_called()
 
     def test_clear_keeps_the_username_for_prefill(self, kr:FakeKeyring) -> None:
-        kr.store[(config.app_name, 'refresh_token')] = 'r1'
-        kr.store[(config.app_name, 'username')] = 'admin'
+        kr.store[(config.keyring_service(), 'refresh_token')] = 'r1'
+        kr.store[(config.keyring_service(), 'username')] = 'admin'
         s = Session()
         s.clear(keep_username=True)
         assert _stored(kr) == {'username': 'admin'}
 
     def test_stored_username(self, kr:FakeKeyring) -> None:
         assert Session().stored_username() is None
-        kr.store[(config.app_name, 'username')] = 'admin'
+        kr.store[(config.keyring_service(), 'username')] = 'admin'
         assert Session().stored_username() == 'admin'
+
+
+class TestEnvironmentIsolation:
+    """Two builds (production, staging) on one PC share the OS keychain: neither may see or overwrite the other's login."""
+
+    def test_a_login_of_one_environment_is_invisible_to_the_other(self, monkeypatch:pytest.MonkeyPatch, kr:FakeKeyring) -> None:
+        monkeypatch.setenv(config.ENV_ENVIRONMENT, 'staging')
+        config.reset_cache()
+        staging = Session()
+        with patch('erp.session.client.login', return_value=client.AuthResult('a1', 'r-staging', USER)):
+            staging.login('admin', 'secret1', remember=True)
+        assert {(svc, key) for (svc, key) in kr.store} == {('lvg-erp:staging', 'refresh_token'), ('lvg-erp:staging', 'username')}
+
+        monkeypatch.setenv(config.ENV_ENVIRONMENT, 'production')
+        config.reset_cache()
+        production = Session()
+        assert production.stored_username() is None
+        with patch('erp.session.client.refresh') as refresh:
+            assert production.restore() is False   # nothing stored for production: no refresh is even attempted
+        refresh.assert_not_called()
+
+    def test_logging_out_of_one_environment_keeps_the_other(self, monkeypatch:pytest.MonkeyPatch, kr:FakeKeyring) -> None:
+        kr.store[('lvg-erp:production', 'refresh_token')] = 'r-prod'
+        monkeypatch.setenv(config.ENV_ENVIRONMENT, 'staging')
+        config.reset_cache()
+        kr.store[('lvg-erp:staging', 'refresh_token')] = 'r-stg'
+        Session().clear()
+        assert ('lvg-erp:staging', 'refresh_token') not in kr.store
+        assert kr.store[('lvg-erp:production', 'refresh_token')] == 'r-prod'

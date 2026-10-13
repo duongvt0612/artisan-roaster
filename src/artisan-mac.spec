@@ -62,7 +62,13 @@ except Exception:
 
 SUPPORTED_LANGUAGES = ['ar', 'bg', 'cs', 'da', 'de','el','en','es','fa','fi','fr','gd', 'he','hu','id','it','ja','ko','lv', 'nl','no','pl','pt_BR','pt','sk', 'sv','th','tr','uk','vi','zh_CN','zh_TW']
 
+# the ERP server of this build (written by make-erp-config.py): an installer that does not know its server is never made
+if not os.path.exists('erp-config.json'):
+    raise SystemExit('erp-config.json is missing: run "python3 make-erp-config.py --url <ERP API URL> --env <production|staging|...>" '
+                     'or set ERP_API_BASE_URL and ERP_ENVIRONMENT before building')
+
 DATA_FILES = [
+        (r'erp-config.json', '.'),
         (r'Assets.car', '.'),
         (r'artisanProfile.icns', '.'),
         (r'artisanAlarms.icns', '.'),

@@ -1,0 +1,4 @@
+{
+  "apiBaseUrl": "https://erp-api.example.vn/api",
+  "environment": "production"
+}

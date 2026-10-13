@@ -240,7 +240,9 @@ class ErpLogin(ArtisanDialog):
         self.cancel_button.setShortcut(QKeySequence('Ctrl+.'))
         self.cancel_button.clicked.connect(self.reject)
 
-        hint = QLabel(QApplication.translate('ERP', 'Máy chủ: {0}').format(urlparse(config.get_api_base_url()).netloc))
+        env_tag = config.environment_label()
+        hint = QLabel(QApplication.translate('ERP', 'Máy chủ: {0}').format(urlparse(config.get_api_base_url()).netloc)
+                      + (QApplication.translate('ERP', ' · MÔI TRƯỜNG {0}').format(env_tag) if env_tag else ''))
         hint.setObjectName('erpHint')
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
 

@@ -175,3 +175,14 @@ class TestErpLogin:
             assert login.erp_login(MagicMock()) is True
             session.is_authenticated = False
             assert login.erp_login(MagicMock()) is False
+
+
+def test_the_login_names_the_server_and_flags_a_test_environment(monkeypatch:pytest.MonkeyPatch) -> None:
+    from PyQt6.QtWidgets import QLabel
+    from erp import config
+    d = login.ErpLogin(None, MagicMock())
+    assert any(label.text() == 'Máy chủ: erp.test' for label in d.findChildren(QLabel))
+    monkeypatch.setenv(config.ENV_ENVIRONMENT, 'staging')
+    config.reset_cache()
+    d = login.ErpLogin(None, MagicMock())
+    assert any(label.text() == 'Máy chủ: erp.test · MÔI TRƯỜNG STAGING' for label in d.findChildren(QLabel))

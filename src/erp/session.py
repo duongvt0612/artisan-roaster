@@ -45,7 +45,7 @@ def _keyring() -> Any:
 
 def _load(key:str) -> str|None:
     try:
-        return _keyring().get_password(config.app_name, key) # type:ignore[no-any-return]
+        return _keyring().get_password(config.keyring_service(), key) # type:ignore[no-any-return]
     except Exception as e: # pylint: disable=broad-except
         _log.info('keyring not available: %s', type(e).__name__)
         return None
@@ -53,14 +53,14 @@ def _load(key:str) -> str|None:
 
 def _store(key:str, value:str) -> None:
     try:
-        _keyring().set_password(config.app_name, key, value)
+        _keyring().set_password(config.keyring_service(), key, value)
     except Exception as e: # pylint: disable=broad-except
         _log.info('keyring not available: %s', type(e).__name__)
 
 
 def _delete(key:str) -> None:
     try:
-        _keyring().delete_password(config.app_name, key)
+        _keyring().delete_password(config.keyring_service(), key)
     except Exception as e: # pylint: disable=broad-except
         # also raised if there is nothing stored under this key
         _log.debug('keyring delete failed: %s', type(e).__name__)

@@ -57,6 +57,11 @@ for /f "usebackq delims==" %%a IN (`python -c "import artisanlib; print(artisanl
 create-version-file version-metadata.yml --outfile version_info-win.txt --version %ARTISAN_VERSION%.%ARTISAN_BUILD%
 
 ::
+:: the ERP server of this build: set ERP_API_BASE_URL and ERP_ENVIRONMENT (see make-erp-config.py)
+python make-erp-config.py
+if ERRORLEVEL 1 (echo ** Failed in make-erp-config.py: set ERP_API_BASE_URL and ERP_ENVIRONMENT & exit /b 1) else (echo ** Success)
+
+::
 :: run pyinstaller
 :: Choose log-level from 'TRACE', 'DEBUG', 'INFO', 'WARN', 'DEPRECATION', 'ERROR', 'FATAL'
 echo **** Running pyinstaller
