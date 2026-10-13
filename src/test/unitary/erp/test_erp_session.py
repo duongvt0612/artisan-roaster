@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from erp import client, config, session as session_module
+from erp import client, config, device, session as session_module
 from erp.session import Session
 
 USER = {'id': 'u1', 'username': 'admin', 'fullName': 'Admin', 'roles': []}
@@ -145,7 +145,8 @@ class TestLogoutAndClear:
             s.login('admin', 'secret1', remember=True)
         with patch('erp.session.client.logout', return_value=True) as logout:
             s.logout()
-        logout.assert_called_once_with('a1')
+        # the ERP is told WHICH session / refresh token ends: nothing else of the user is logged out
+        logout.assert_called_once_with('a1', session_id=device.session_id(), refresh_token='r1')
         assert not s.is_authenticated
         assert s.user is None
         assert _stored(kr) == {}

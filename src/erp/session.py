@@ -30,7 +30,7 @@ from typing import Any, Final
 
 import requests
 
-from erp import client, config
+from erp import client, config, device
 
 _log: Final[logging.Logger] = logging.getLogger(__name__)
 
@@ -205,12 +205,13 @@ class Session:
                 _store(_REFRESH_TOKEN_KEY, result.refresh_token)
 
     def logout(self) -> None:
-        """Ends the session on the ERP (best effort) and forgets everything stored locally.
+        """Ends the session of THIS Artisan on the ERP (best effort) and forgets everything stored locally.
 
-        NOTE: the ERP revokes ALL refresh tokens of the user, i.e. other devices are logged out as well.
+        The ERP gives back the roaster of this session and revokes this refresh token only: the user stays logged in on his other
+        devices (web, mobile) and on other PCs.
         """
         if self.access_token is not None:
-            client.logout(self.access_token)
+            client.logout(self.access_token, session_id=device.session_id(), refresh_token=self.refresh_token)
         self.clear()
 
 

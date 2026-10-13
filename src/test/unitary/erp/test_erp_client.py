@@ -39,7 +39,7 @@ class TestConfig:
         assert config.get_api_base_url() == 'http://localhost:10301/api'
         assert config.get_login_url() == 'http://localhost:10301/api/auth/login'
         assert config.get_refresh_url() == 'http://localhost:10301/api/auth/refresh'
-        assert config.get_logout_url() == 'http://localhost:10301/api/auth/logout'
+        assert config.get_logout_url() == 'http://localhost:10301/api/artisan/logout'
 
 
 class TestLogin:
@@ -151,15 +151,29 @@ class TestRefresh:
 
 
 class TestLogout:
-    def test_sends_bearer_token(self) -> None:
+    """Artisan's own logout: gives the roaster of THIS session back and revokes THIS refresh token. The user stays logged in on the web / mobile."""
+
+    def test_sends_bearer_token_session_and_refresh_token(self) -> None:
         with patch('erp.client.requests.post', return_value=_response(200, _ok({'message': 'ok'}))) as post:
-            assert client.logout('a1') is True
+            assert client.logout('a1', session_id='s1', refresh_token='r1') is True
         args, kwargs = post.call_args
         assert args[0] == config.get_logout_url()
         assert kwargs['headers']['Authorization'] == 'Bearer a1'
+        assert kwargs['json'] == {'sessionId': 's1', 'refreshToken': 'r1'}
+
+    def test_does_not_use_the_logout_that_revokes_every_device(self) -> None:
+        with patch('erp.client.requests.post', return_value=_response(200, _ok({'message': 'ok'}))) as post:
+            client.logout('a1', session_id='s1', refresh_token='r1')
+        assert post.call_args[0][0].endswith('/artisan/logout')
+        assert not post.call_args[0][0].endswith('/auth/logout')
+
+    def test_refresh_token_is_optional(self) -> None:
+        with patch('erp.client.requests.post', return_value=_response(200, _ok({'message': 'ok'}))) as post:
+            assert client.logout('a1', session_id='s1', refresh_token=None) is True
+        assert post.call_args[1]['json'] == {'sessionId': 's1'}
 
     def test_is_best_effort(self) -> None:
         with patch('erp.client.requests.post', side_effect=requests.exceptions.ConnectionError('down')):
-            assert client.logout('a1') is False
+            assert client.logout('a1', session_id='s1', refresh_token='r1') is False
         with patch('erp.client.requests.post', return_value=_response(401, _fail('Unauthorized'))):
-            assert client.logout('a1') is False
+            assert client.logout('a1', session_id='s1', refresh_token='r1') is False

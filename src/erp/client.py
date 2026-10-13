@@ -6,7 +6,7 @@
 # HTTP client for the authentication endpoints of the LVG ERP:
 #   POST /auth/login    {username, password}
 #   POST /auth/refresh  {refreshToken}
-#   POST /auth/logout   (Bearer)
+#   POST /artisan/logout {sessionId, refreshToken?}  (Bearer): Artisan's own logout, see logout()
 # All replies are wrapped as {success, errors, errorMessages, data}.
 
 # LICENSE
@@ -134,11 +134,17 @@ def refresh(refresh_token:str) -> AuthResult:
     return AuthResult(access_token, new_refresh_token if isinstance(new_refresh_token, str) else refresh_token, user)
 
 
-def logout(access_token:str) -> bool:
-    """Best effort: returns True if the ERP confirmed the logout. Revokes ALL refresh tokens of the user."""
+def logout(access_token:str, *, session_id:str, refresh_token:str|None) -> bool:
+    """Artisan's own logout (best effort): the ERP gives back the roaster this session holds and revokes THIS refresh token only.
+
+    The user stays logged in on his other devices (web, mobile): that is why this is not the ERP's /auth/logout, which revokes every
+    refresh token of the user. Returns True if the ERP confirmed the logout."""
     _log.debug('ERP logout()')
+    payload:dict[str, Any] = {'sessionId': session_id}
+    if refresh_token:
+        payload['refreshToken'] = refresh_token
     try:
-        r = _post(config.get_logout_url(), {}, {'Authorization': f'Bearer {access_token}'})
+        r = _post(config.get_logout_url(), payload, {'Authorization': f'Bearer {access_token}'})
     except ErpAuthError:
         return False
     return 200 <= r.status_code < 300

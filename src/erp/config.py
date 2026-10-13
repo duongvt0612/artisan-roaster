@@ -203,7 +203,8 @@ def get_refresh_url() -> str:
 
 
 def get_logout_url() -> str:
-    return get_api_base_url() + '/auth/logout'
+    """Artisan's own logout. Deliberately NOT /auth/logout: that one revokes the refresh tokens of every device of the user."""
+    return get_api_base_url() + '/artisan/logout'
 
 
 def get_roasters_url() -> str:

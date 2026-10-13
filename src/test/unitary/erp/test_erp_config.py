@@ -55,7 +55,7 @@ class TestEnvironmentVariables:
         assert config.environment() == 'staging'
         assert config.get_login_url() == 'https://erp-api.example.vn/api/auth/login'
         assert config.get_refresh_url() == 'https://erp-api.example.vn/api/auth/refresh'
-        assert config.get_logout_url() == 'https://erp-api.example.vn/api/auth/logout'
+        assert config.get_logout_url() == 'https://erp-api.example.vn/api/artisan/logout' # Artisan's own logout, not /auth/logout
         assert config.get_roasters_url() == 'https://erp-api.example.vn/api/roasters'
         assert config.get_artisan_url() == 'https://erp-api.example.vn/api/artisan'
 

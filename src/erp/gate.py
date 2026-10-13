@@ -61,7 +61,7 @@ def confirm_logout(aw:'ApplicationWindow') -> bool:
     box.setWindowTitle('ERP')
     box.setText(QApplication.translate('ERP', 'Đăng xuất khỏi ERP và thoát Artisan?'))
     box.setInformativeText(QApplication.translate(
-        'ERP', 'Tài khoản này cũng sẽ bị đăng xuất khỏi các thiết bị khác đang dùng ERP.'))
+        'ERP', 'Chỉ máy tính này bị đăng xuất; tài khoản của bạn trên web, điện thoại và máy khác không bị ảnh hưởng.'))
     yes = box.addButton(QApplication.translate('ERP', 'Đăng xuất'), QMessageBox.ButtonRole.AcceptRole)
     cancel = box.addButton(QApplication.translate('ERP', 'Huỷ'), QMessageBox.ButtonRole.RejectRole)
     box.setDefaultButton(cancel)
@@ -111,7 +111,7 @@ def logout(aw:'ApplicationWindow') -> bool:
     if not confirm_quit(aw):
         return False
     _state.quit_confirmed = True # the quit that follows must not ask again
-    release_roaster() # give the roaster back first: the ERP logout would release it too, but then our heartbeat thread is still running
+    release_roaster() # give the roaster back first: stops our heartbeat thread, then the ERP logout (which also releases this session's roaster) cannot race it
     session.logout()
     return True
 
