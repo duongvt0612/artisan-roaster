@@ -202,6 +202,9 @@ class ProfileData(TypedDict, total=False):
     roastbatchprefix: str
     roastbatchpos: int
     roastUUID: str
+    erpRoundId: str       # the ERP roast batch ('mẻ rang') this recording belongs to
+    erpCommandCode: str
+    erpRoundNumber: int
     scheduleID: str
     scheduleDate: str
     beansize:str # legacy; float in str mapped to beansize_max

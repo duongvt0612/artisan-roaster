@@ -26,7 +26,8 @@ from typing import Any, Final, TYPE_CHECKING
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
-from erp import banner as erp_banner, config, device, realtime as erp_realtime
+from erp import attachments, banner as erp_banner, config, device, realtime as erp_realtime, roast_flow
+from erp.attachments import Job, UploadQueue, Uploader
 from erp.client import ErpAuthError
 from erp.lease import LeaseManager, LeaseState
 from erp.login import erp_login, error_text
@@ -73,6 +74,7 @@ def require_login(aw:'ApplicationWindow') -> bool:
     while True:
         try:
             if session.restore():
+                _resume_uploads()
                 return True
             break
         except ErpAuthError as e:
@@ -80,13 +82,19 @@ def require_login(aw:'ApplicationWindow') -> bool:
             _log.info('ERP session could not be verified: %s', e.kind)
             if not ask_retry(e):
                 return False
-    return erp_login(aw, session.stored_username())
+    logged_in = erp_login(aw, session.stored_username())
+    if logged_in:
+        _resume_uploads() # files that waited for the login are sent now
+    return logged_in
 
 
 def logout(aw:'ApplicationWindow') -> bool:
     """Ends the ERP session after confirmation. Returns True if logged out; the caller is expected to quit the application."""
     if not confirm_logout(aw):
         return False
+    if not confirm_quit(aw):
+        return False
+    _state.quit_confirmed = True # the quit that follows must not ask again
     release_roaster() # give the roaster back first: the ERP logout would release it too, but then our heartbeat thread is still running
     session.logout()
     return True
@@ -101,6 +109,7 @@ RELEASE_WAIT_SECONDS: Final[float] = 3.0 # how long quitting Artisan waits for t
 class _Bridge(QObject):
     """Moves lease state changes from the heartbeat thread to the GUI thread."""
     state_changed = pyqtSignal(object, str)
+    upload_event = pyqtSignal(str, object, str)
 
 
 class _State:
@@ -113,6 +122,10 @@ class _State:
         self.dialog:RoasterDialog|None = None
         self.banner:erp_banner.LeaseBanner|None = None
         self.bridge:_Bridge|None = None
+        self.capacity_kg:float|None = None  # what the chosen roaster can take in one batch, None if the ERP does not know
+        self.queue:UploadQueue|None = None   # the files of finished batches that are waiting for the ERP
+        self.uploader:Uploader|None = None   # and the thread that sends them
+        self.quit_confirmed:bool = False    # the operator already agreed to quit with a batch still open (logging out asks first)
 
 
 _state:_State = _State()
@@ -189,11 +202,11 @@ def _install_banner(aw:'ApplicationWindow') -> None:
         return
     try:
         bar = erp_banner.install(aw.main_widget)
-        bridge = _Bridge()
-        bridge.state_changed.connect(_on_lease_state)
+        _ensure_bridge()
         bar.reselect.connect(reselect_roaster)
+        bar.finish_batch.connect(lambda: roast_flow.finish_batch(aw))
         _state.banner = bar
-        _state.bridge = bridge
+        roast_flow.set_listener(_on_batch_changed)
     except Exception as e: # pylint: disable=broad-except
         _log.exception(e)
 
@@ -205,10 +218,12 @@ def window_title_suffix() -> str:
         return ''
     name = manager.roaster_name
     if manager.state is LeaseState.LOST:
-        return QApplication.translate('ERP', ' · KHÔNG CÒN GIỮ MÁY {0}').format(name)
-    if manager.state is LeaseState.SUSPECT:
-        return QApplication.translate('ERP', ' · Máy rang: {0} (mất kết nối ERP)').format(name)
-    return QApplication.translate('ERP', ' · Máy rang: {0}').format(name)
+        text = QApplication.translate('ERP', ' · KHÔNG CÒN GIỮ MÁY {0}').format(name)
+    elif manager.state is LeaseState.SUSPECT:
+        text = QApplication.translate('ERP', ' · Máy rang: {0} (mất kết nối ERP)').format(name)
+    else:
+        text = QApplication.translate('ERP', ' · Máy rang: {0}').format(name)
+    return text + roast_flow.title_suffix()
 
 
 def _refresh_title() -> None:
@@ -228,6 +243,90 @@ def _on_lease_state(state:LeaseState, reason:str) -> None:
     _refresh_title()
 
 
+def _on_batch_changed() -> None:
+    """The roast batch changed (started, finished, cancelled): the banner and the window title say which one is running."""
+    if _state.banner is not None:
+        _state.banner.set_batch(roast_flow.banner_text())
+    _show_pending_files() # files were just queued when a batch is finished
+    _refresh_title()
+
+
+def _capacity_kg(roaster:Roaster) -> float|None:
+    """The batch capacity of a roaster in kg (the ERP stores it as text with its unit); None if unknown or not in kg."""
+    if not roaster.capacity or (roaster.capacity_unit or 'kg').strip().lower() != 'kg':
+        return None
+    try:
+        value = float(roaster.capacity)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def _ensure_bridge() -> _Bridge:
+    if _state.bridge is None:
+        _state.bridge = _Bridge()
+        _state.bridge.state_changed.connect(_on_lease_state)
+    return _state.bridge
+
+
+def _show_pending_files() -> None:
+    if _state.banner is not None and _state.queue is not None:
+        _state.banner.set_pending_files(_state.queue.pending_count())
+
+
+def _on_upload_event(event:str, job:Job|None, reason:str) -> None:
+    """The sender told something (GUI thread): the banner counts what is still to send, a sent file is mentioned, a refused one is explained."""
+    _show_pending_files()
+    aw = _state.aw
+    if aw is None:
+        return
+    if event == attachments.SENT and job is not None:
+        try:
+            aw.sendmessage(QApplication.translate('ERP', 'Đã gửi tệp {0} lên ERP').format(job.filename))
+        except Exception as e: # pylint: disable=broad-except
+            _log.exception(e)
+    elif event == attachments.REJECTED and job is not None:
+        box = QMessageBox(aw)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle('ERP')
+        box.setText(QApplication.translate('ERP', 'ERP không nhận tệp {0}.').format(job.filename))
+        box.setInformativeText(QApplication.translate(
+            'ERP', '{0}\n\nTệp vẫn được giữ lại trên máy này, trong thư mục: {1}').format(reason, _state.queue.rejected_directory if _state.queue else ''))
+        box.exec()
+
+
+def _start_uploads() -> None:
+    """Starts the sender of the files of finished batches. Failing to start it never keeps the user out: the files are then simply not sent."""
+    if _state.uploader is not None:
+        return
+    try:
+        queue = UploadQueue()
+        uploader = Uploader(queue)
+        bridge = _ensure_bridge()
+        bridge.upload_event.connect(_on_upload_event)
+        uploader.add_listener(bridge.upload_event.emit)
+        _state.queue, _state.uploader = queue, uploader
+        roast_flow.set_uploads(queue, uploader)
+        uploader.start()
+        _show_pending_files()
+    except Exception as e: # pylint: disable=broad-except
+        _log.exception(e)
+
+
+def _stop_uploads() -> None:
+    uploader = _state.uploader
+    _state.uploader = None
+    roast_flow.set_uploads(None, None)
+    if uploader is not None:
+        uploader.stop(wait=False)
+
+
+def _resume_uploads() -> None:
+    """The ERP login is valid again: whatever waited for it is sent now."""
+    if _state.uploader is not None:
+        _state.uploader.resume()
+
+
 def _adopt(roaster:Roaster, claim:Claim) -> None:
     """Starts keeping the freshly claimed roaster alive (and gives back a previous one, if any)."""
     previous = _state.manager
@@ -239,9 +338,11 @@ def _adopt(roaster:Roaster, claim:Claim) -> None:
     if bridge is not None:
         manager.add_listener(bridge.state_changed.emit)
     _state.manager = manager
+    _state.capacity_kg = _capacity_kg(roaster)
     manager.start()
     if _state.banner is not None:
         _state.banner.apply(LeaseState.HELD, manager.roaster_name, '')
+        _state.banner.set_batch(roast_flow.banner_text())
     _refresh_title()
 
 
@@ -270,6 +371,8 @@ def require_roaster(aw:'ApplicationWindow') -> bool:
     while True:
         outcome = _pick(aw)
         if outcome == 'ok':
+            _start_uploads() # files of batches finished earlier (maybe before a crash) are sent from now on
+            roast_flow.resume_if_any(aw, _state.manager) # a batch left running by a crash is offered for finishing or cancelling
             return True
         if outcome == 'login' and require_login(aw):
             continue # the login had expired meanwhile; he logged in again, choose now
@@ -293,8 +396,40 @@ def release_roaster(timeout:float = RELEASE_WAIT_SECONDS) -> None:
     manager = _state.manager
     _state.manager = None
     _stop_realtime()
+    _stop_uploads() # files still queued stay on disk and are sent at the next start
     if manager is None:
         return
     worker = threading.Thread(target=manager.stop, name='erp-lease-release', daemon=True)
     worker.start()
     worker.join(timeout)
+
+
+# ---- the roast batch: what Artisan calls -------------------------------------------------------------------------------------
+
+def before_start(aw:'ApplicationWindow') -> bool:
+    """START was pressed: the operator picks the production command and the ERP creates the batch. False: do not start recording."""
+    return roast_flow.before_start(aw, _state.manager, capacity_kg=_state.capacity_kg, relogin=lambda: require_login(aw))
+
+
+def recording_started(aw:'ApplicationWindow') -> None:
+    roast_flow.recording_started(aw)
+
+
+def roast_stopped(aw:'ApplicationWindow') -> None:
+    roast_flow.roast_stopped(aw)
+
+
+def before_reset(aw:'ApplicationWindow') -> bool:
+    """RESET was pressed. False: do not reset (a batch is still open on the ERP and the operator kept it)."""
+    return roast_flow.before_reset(aw)
+
+
+def confirm_quit(aw:'ApplicationWindow') -> bool:
+    """Artisan is about to close. False: stay (a batch is still open on the ERP)."""
+    if _state.quit_confirmed:
+        return True
+    return roast_flow.confirm_quit(aw)
+
+
+def profile_link(aw:'ApplicationWindow') -> dict[str, Any]:
+    return roast_flow.profile_link(aw)

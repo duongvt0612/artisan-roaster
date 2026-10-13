@@ -123,3 +123,72 @@ def test_text_stays_readable_inside_artisans_wildcard_stylesheet(qapp:QApplicati
     assert frame_bg != '#ffffff'
     assert label_bg == frame_bg, f'label background {label_bg} differs from the banner colour {frame_bg}'
     host.close()
+
+
+class TestBatch:
+    """The roast batch is shown next to the roaster, with the button that finishes it."""
+
+    def test_no_batch_no_button(self, bar:banner.LeaseBanner) -> None:
+        bar.apply(LeaseState.HELD, 'Máy Rang Nhỏ', '')
+        assert bar.finish_button.isHidden() and bar.label.text() == 'Máy rang đang dùng: Máy Rang Nhỏ'
+
+    def test_the_batch_follows_the_roaster_on_the_strip(self, bar:banner.LeaseBanner) -> None:
+        bar.apply(LeaseState.HELD, 'Máy Rang Nhỏ', '')
+        bar.set_batch('Đang rang LS-1 · mẻ #3 · Arabica · 40 kg')
+        assert bar.label.text() == 'Máy rang đang dùng: Máy Rang Nhỏ · Đang rang LS-1 · mẻ #3 · Arabica · 40 kg'
+        assert not bar.finish_button.isHidden()
+
+    def test_the_button_asks_to_finish(self, bar:banner.LeaseBanner) -> None:
+        bar.apply(LeaseState.HELD, 'Máy', '')
+        bar.set_batch('Đang rang LS-1')
+        got:list[int] = []
+        bar.finish_batch.connect(lambda: got.append(1))
+        bar.finish_button.click()
+        assert got == [1]
+
+    def test_finishing_a_batch_hides_the_button_again(self, bar:banner.LeaseBanner) -> None:
+        bar.apply(LeaseState.HELD, 'Máy', '')
+        bar.set_batch('Đang rang LS-1')
+        bar.set_batch('')
+        assert bar.finish_button.isHidden() and bar.label.text() == 'Máy rang đang dùng: Máy'
+
+    def test_a_lost_roaster_still_allows_finishing_the_batch(self, bar:banner.LeaseBanner) -> None:
+        bar.apply(LeaseState.LOST, 'Máy', 'force_released')
+        bar.set_batch('Đang rang LS-1')
+        assert not bar.finish_button.isHidden() and not bar.reselect_button.isHidden() and 'LS-1' in bar.label.text()
+
+    def test_the_batch_survives_a_state_change(self, bar:banner.LeaseBanner) -> None:
+        bar.apply(LeaseState.HELD, 'Máy', '')
+        bar.set_batch('Đang rang LS-1')
+        bar.apply(LeaseState.SUSPECT, 'Máy', 'no_connection')
+        assert 'LS-1' in bar.label.text() and not bar.finish_button.isHidden()
+
+    def test_a_batch_before_any_state_does_not_show_the_strip(self, bar:banner.LeaseBanner) -> None:
+        bar.set_batch('Đang rang LS-1')
+        assert not bar.isVisible()
+
+    def test_idle_hides_everything(self, bar:banner.LeaseBanner) -> None:
+        bar.apply(LeaseState.HELD, 'Máy', '')
+        bar.set_batch('Đang rang LS-1')
+        bar.apply(LeaseState.IDLE, 'Máy', '')
+        assert not bar.isVisible()
+
+
+class TestPendingFiles:
+    def test_the_number_of_files_still_to_send_is_shown(self, bar:banner.LeaseBanner) -> None:
+        bar.apply(LeaseState.HELD, 'Máy', '')
+        bar.set_pending_files(2)
+        assert bar.label.text() == 'Máy rang đang dùng: Máy · 2 tệp chưa gửi lên ERP'
+        bar.set_pending_files(0)
+        assert bar.label.text() == 'Máy rang đang dùng: Máy'
+
+    def test_it_sits_next_to_the_batch(self, bar:banner.LeaseBanner) -> None:
+        bar.apply(LeaseState.HELD, 'Máy', '')
+        bar.set_batch('Đang rang LS-1')
+        bar.set_pending_files(1)
+        assert bar.label.text() == 'Máy rang đang dùng: Máy · Đang rang LS-1 · 1 tệp chưa gửi lên ERP'
+
+    def test_it_is_kept_when_the_roaster_is_lost(self, bar:banner.LeaseBanner) -> None:
+        bar.apply(LeaseState.LOST, 'Máy', 'force_released')
+        bar.set_pending_files(3)
+        assert '3 tệp chưa gửi lên ERP' in bar.label.text()

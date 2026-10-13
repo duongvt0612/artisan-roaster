@@ -30,6 +30,9 @@ ERP_ONLY: Final[bool] = True
 # (connect, read) timeout in seconds of requests to the ERP
 timeout: Final[tuple[float, float]] = (5, 15)
 
+# (connect, read) timeout in seconds of a file upload (a roast report of a few MB over a poor connection)
+upload_timeout: Final[tuple[float, float]] = (5, 60)
+
 # client side validation, mirrors the rules of the ERP login endpoint
 min_username_len: Final[int] = 3
 max_username_len: Final[int] = 30
@@ -61,6 +64,11 @@ def get_logout_url() -> str:
 
 def get_roasters_url() -> str:
     return get_api_base_url() + '/roasters'
+
+
+def get_artisan_url() -> str:
+    """Prefix of the roasting API made for Artisan (find commands, start / finish / cancel a roast batch)."""
+    return get_api_base_url() + '/artisan'
 
 
 def get_socket_url() -> str:

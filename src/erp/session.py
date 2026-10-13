@@ -145,23 +145,30 @@ class Session:
         if not keep_username:
             _delete(_USERNAME_KEY)
 
-    def authed_request(self, method:str, url:str, *, json:Any = None, params:dict[str, Any]|None = None) -> requests.Response:
+    def authed_request(self, method:str, url:str, *, json:Any = None, params:dict[str, Any]|None = None,
+                       data:dict[str, Any]|None = None, files:dict[str, Any]|None = None) -> requests.Response:
         """Bearer request that renews the access token once on a 401 and retries.
 
+        `data` + `files` make a multipart upload (see client.request).
         Raises client.ErpAuthError: 'invalid_session' if not logged in or the refresh token is dead (the session is dropped),
         'network' / 'server' / 'rate_limited' if the ERP could not be reached (the session is kept).
         """
         token = self.access_token
         if token is None:
             raise client.ErpAuthError('invalid_session', 'Chưa đăng nhập ERP')
-        response = client.request(method, url, token, json=json, params=params)
+        extra:dict[str, Any] = {}
+        if data is not None:
+            extra['data'] = data
+        if files is not None:
+            extra['files'] = files
+        response = client.request(method, url, token, json=json, params=params, **extra)
         if response.status_code != 401:
             return response
         self._renew_access_token(stale=token)
         renewed = self.access_token
         if renewed is None:
             raise client.ErpAuthError('invalid_session', 'Phiên đăng nhập ERP đã hết hạn')
-        return client.request(method, url, renewed, json=json, params=params)
+        return client.request(method, url, renewed, json=json, params=params, **extra)
 
     def fresh_access_token(self) -> str|None:
         """The access token, renewed first if it expires within a minute. For the realtime channel, which only checks the token when it connects."""

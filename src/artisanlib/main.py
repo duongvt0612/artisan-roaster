@@ -12439,7 +12439,7 @@ class ApplicationWindow(QMainWindow):
                     elif shift_modifier and self.qmc.flagon:
                         self.qmc.OffMonitor()
                     elif control_modifier and not self.qmc.flagstart:
-                        self.qmc.OnRecorder()
+                        self.qmc.ToggleRecorder() # not OnRecorder(): START has to go through the ERP (production command, batch)
                     else:
                         self.releaseminieditor()
                         self.moveKbutton('enter')
@@ -16980,6 +16980,11 @@ class ApplicationWindow(QMainWindow):
                     import uuid
                     self.qmc.roastUUID = uuid.uuid4().hex # generate UUID
                 profile['roastUUID'] = self.qmc.roastUUID
+            erp_link = erp.gate.profile_link(self) # which ERP roast batch this recording is (empty for any other profile)
+            if erp_link:
+                profile['erpRoundId'] = str(erp_link['erpRoundId'])
+                profile['erpCommandCode'] = str(erp_link['erpCommandCode'])
+                profile['erpRoundNumber'] = int(erp_link['erpRoundNumber'])
             if self.qmc.scheduleID is not None:
                 profile['scheduleID'] = self.qmc.scheduleID
             if self.qmc.scheduleDate is not None:
@@ -21485,6 +21490,12 @@ class ApplicationWindow(QMainWindow):
     def closeApp(self) -> bool:
         self.quitAction.setEnabled(False)
         try:
+            try:
+                if not erp.gate.confirm_quit(self): # a batch is still open on the ERP and the operator wants to stay
+                    self.quitAction.setEnabled(True)
+                    return False
+            except Exception as e: # pylint: disable=broad-except
+                _log.exception(e)
             unsaved_changes = self.qmc.safesaveflag
             if self.qmc.checkSaved(): # if not canceled
                 _log.info('MODE: QUIT')
@@ -21554,6 +21565,37 @@ class ApplicationWindow(QMainWindow):
     @pyqtSlot(bool)
     def fileQuit(self, _:bool = False) -> None:
         self.closeApp()
+
+    # ---- ERP roast batch: what the recorder asks the ERP flow (see erp/roast_flow.py) ----
+
+    def erpBeforeStart(self) -> bool:
+        """START pressed: the operator picks the production command and the ERP creates the batch. False: do not record."""
+        try:
+            return erp.gate.before_start(self)
+        except Exception as e: # pylint: disable=broad-except
+            _log.exception(e)
+            self.sendmessage(QApplication.translate('ERP', 'Không bắt đầu được mẻ rang trên ERP: {0}').format(str(e)))
+            return False
+
+    def erpRecordingStarted(self) -> None:
+        try:
+            erp.gate.recording_started(self)
+        except Exception as e: # pylint: disable=broad-except
+            _log.exception(e)
+
+    def erpRoastStopped(self) -> None:
+        try:
+            erp.gate.roast_stopped(self)
+        except Exception as e: # pylint: disable=broad-except
+            _log.exception(e)
+
+    def erpBeforeReset(self) -> bool:
+        """RESET pressed. False: keep the display (a batch is still open on the ERP)."""
+        try:
+            return erp.gate.before_reset(self)
+        except Exception as e: # pylint: disable=broad-except
+            _log.exception(e)
+            return True # never trap the operator behind a bug
 
     @pyqtSlot()
     @pyqtSlot(bool)

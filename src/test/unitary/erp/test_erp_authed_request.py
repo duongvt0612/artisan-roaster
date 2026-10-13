@@ -216,3 +216,27 @@ class TestFreshAccessToken:
         s.refresh_token = 'r1'
         with patch('erp.session.client.refresh', side_effect=client.ErpAuthError('network', 'down')):
             assert s.fresh_access_token() == old  # let the caller try; the server will refuse it if it is really expired
+
+
+class TestMultipart:
+    """Uploads go through the same renew-on-401 path; the file parts are bytes so they can be sent again."""
+
+    def test_data_and_files_reach_the_http_call_and_are_resent_after_a_renewal(self) -> None:
+        s = _logged_in()
+        parts = {'file': ('a.pdf', b'%PDF-', 'application/pdf')}
+        with patch('erp.session.client.refresh', return_value=client.AuthResult('a2', 'r1', USER)), \
+             patch('erp.client.requests.request', side_effect=[_response(401), _response(200, {'ok': True})]) as req:
+            r = s.authed_request('POST', 'http://erp/api/artisan/rounds/r1/files', data={'kind': 'pdf'}, files=parts)
+        assert r.status_code == 200
+        assert req.call_count == 2
+        for call, token in zip(req.call_args_list, ('a1', 'a2'), strict=True):
+            assert call.kwargs['headers']['Authorization'] == f'Bearer {token}'
+            assert call.kwargs['data'] == {'kind': 'pdf'} and call.kwargs['files'] == parts
+            assert call.kwargs['timeout'] == client.config.upload_timeout   # a file takes longer than a JSON call
+
+    def test_plain_requests_keep_their_shape_and_timeout(self) -> None:
+        s = _logged_in()
+        with patch('erp.client.requests.request', return_value=_response(200)) as req:
+            s.authed_request('GET', 'http://erp/api/roasters', params={'a': 1})
+        kwargs = req.call_args.kwargs
+        assert kwargs['files'] is None and kwargs['data'] is None and kwargs['timeout'] == client.config.timeout

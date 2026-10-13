@@ -62,26 +62,39 @@ def _stylesheet(palette:QPalette) -> str:
             padding: 4px 12px; border-radius: 5px; border: 1px solid {lost_fg}; background: transparent; color: {lost_fg}; font-weight: 600;
         }}
         QFrame#{_OBJECT_NAME} QPushButton:hover {{ background: {lost_fg}; color: {lost_bg}; }}
+        QFrame#{_OBJECT_NAME}[kind="held"] QPushButton {{ border: 1px solid {held_fg}; color: {held_fg}; }}
+        QFrame#{_OBJECT_NAME}[kind="held"] QPushButton:hover {{ background: {held_fg}; color: {held_bg}; }}
+        QFrame#{_OBJECT_NAME}[kind="suspect"] QPushButton {{ border: 1px solid {warn_fg}; color: {warn_fg}; }}
+        QFrame#{_OBJECT_NAME}[kind="suspect"] QPushButton:hover {{ background: {warn_fg}; color: {warn_bg}; }}
     """
 
 
 class LeaseBanner(QFrame):
 
     reselect = pyqtSignal()
+    finish_batch = pyqtSignal()
 
     def __init__(self, parent:QWidget|None = None) -> None:
         super().__init__(parent)
         self.setObjectName(_OBJECT_NAME)
         self.kind:str = 'held'
+        self.batch_text:str = ''          # which batch is running ('' if none)
+        self.files_text:str = ''          # how many files of finished batches are still to be sent to the ERP ('' if none)
+        self._shown:tuple[LeaseState, str, str] = (LeaseState.IDLE, '', '')
         self.label:QLabel = QLabel('')
         self.label.setWordWrap(True)
         self.label.setAccessibleName(QApplication.translate('ERP', 'Trạng thái máy rang'))
         self.reselect_button:QPushButton = QPushButton(QApplication.translate('ERP', 'Chọn lại máy'))
         self.reselect_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.reselect_button.clicked.connect(self.reselect.emit)
+        self.finish_button:QPushButton = QPushButton(QApplication.translate('ERP', 'Kết thúc mẻ trên ERP'))
+        self.finish_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.finish_button.clicked.connect(self.finish_batch.emit)
+        self.finish_button.setVisible(False)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(14, 6, 14, 6)
         layout.addWidget(self.label, 1)
+        layout.addWidget(self.finish_button)
         layout.addWidget(self.reselect_button)
         self.setStyleSheet(_stylesheet(self.palette()))
         self.setProperty('kind', self.kind)
@@ -99,22 +112,42 @@ class LeaseBanner(QFrame):
 
     def apply(self, state:LeaseState, name:str, reason:str) -> None:
         """Shows the strip for a lease state; IDLE hides it."""
+        self._shown = (state, name, reason)
+        self._render()
+
+    def set_batch(self, text:str) -> None:
+        """Tells which roast batch is running ('' for none); it is shown next to the roaster, with the button that finishes it."""
+        self.batch_text = text
+        self._render()
+
+    def set_pending_files(self, count:int) -> None:
+        """Tells how many files of finished batches have not reached the ERP yet (0 hides the note)."""
+        self.files_text = QApplication.translate('ERP', '{0} tệp chưa gửi lên ERP').format(count) if count > 0 else ''
+        self._render()
+
+    def _render(self) -> None:
+        state, name, reason = self._shown
         if state is LeaseState.IDLE:
             self.setVisible(False)
             return
         if state is LeaseState.HELD:
             self._set_kind('held')
-            self.label.setText(QApplication.translate('ERP', 'Máy rang đang dùng: {0}').format(name))
+            text = QApplication.translate('ERP', 'Máy rang đang dùng: {0}').format(name)
             self.reselect_button.setVisible(False)
         elif state is LeaseState.SUSPECT:
             self._set_kind('suspect')
-            self.label.setText(QApplication.translate(
-                'ERP', 'Mất kết nối tới ERP, {0} có thể bị người khác chiếm. Đang thử kết nối lại…').format(name))
+            text = QApplication.translate(
+                'ERP', 'Mất kết nối tới ERP, {0} có thể bị người khác chiếm. Đang thử kết nối lại…').format(name)
             self.reselect_button.setVisible(False)
         else:
             self._set_kind('lost')
-            self.label.setText(lost_text(name, reason))
+            text = lost_text(name, reason)
             self.reselect_button.setVisible(True)
+        extras = ' · '.join(t for t in (self.batch_text, self.files_text) if t)
+        if extras:
+            text = f'{text} · {extras}' if state is LeaseState.HELD else f'{text} {extras}'
+        self.label.setText(text)
+        self.finish_button.setVisible(bool(self.batch_text))
         self.setVisible(True)
 
 

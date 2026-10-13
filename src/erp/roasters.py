@@ -140,10 +140,21 @@ def _json(response:Any) -> Any:
         return None
 
 
-def _request(method:str, url:str, *, json:Any = None, params:dict[str, Any]|None = None) -> Any:
-    """Returns the "data" of a successful reply, raises a RoasterError otherwise."""
+def request(method:str, url:str, *, json:Any = None, params:dict[str, Any]|None = None,
+            conflicts:dict[str, type[RoasterError]]|None = None,
+            data:dict[str, Any]|None = None, files:dict[str, Any]|None = None) -> Any:
+    """Returns the "data" of a successful reply, raises a RoasterError otherwise.
+
+    A 409 (or a 400 about the content of a request) carries a machine readable code in errors[0]: `conflicts` maps the codes of one API to its exception classes,
+    the codes of the roaster lease API (ROASTER_OCCUPIED, LEASE_LOST, ROASTER_NOT_HELD) are always known.
+    """
+    extra:dict[str, Any] = {}
+    if data is not None:
+        extra['data'] = data
+    if files is not None:
+        extra['files'] = files
     try:
-        response = session.authed_request(method, url, json=json, params=params)
+        response = session.authed_request(method, url, json=json, params=params, **extra)
     except ErpAuthError as e:
         if e.kind == 'invalid_session':
             raise SessionExpired(e.message) from e
@@ -161,14 +172,12 @@ def _request(method:str, url:str, *, json:Any = None, params:dict[str, Any]|None
         raise RoasterForbidden(message)
     if status == 404:
         raise RoasterNotFound(message)
-    if status == 409:
+    if status in (400, 409):
         code = _code(body)
-        if code == 'ROASTER_OCCUPIED':
-            raise RoasterOccupied(message)
-        if code == 'LEASE_LOST':
-            raise LeaseLost(message)
-        if code == 'ROASTER_NOT_HELD':
-            raise NotHeld(message)
+        known:dict[str, type[RoasterError]] = {
+            'ROASTER_OCCUPIED': RoasterOccupied, 'LEASE_LOST': LeaseLost, 'ROASTER_NOT_HELD': NotHeld, **(conflicts or {})}
+        if code in known:
+            raise known[code](message)
     if status == 429:
         raise RoasterUnavailable('rate_limited', message)
     if status >= 500:
@@ -205,14 +214,14 @@ def _roaster(item:Any) -> Roaster|None:
 
 
 def list_roasters(session_id:str) -> list[Roaster]:
-    data = _request('GET', config.get_roasters_url(), params={'sessionId': session_id})
+    data = request('GET', config.get_roasters_url(), params={'sessionId': session_id})
     if not isinstance(data, list):
         raise RoasterUnavailable('server', 'Phản hồi của ERP không đúng định dạng')
     return [r for r in (_roaster(item) for item in data) if r is not None]
 
 
 def claim(roaster_id:str, *, session_id:str, device_id:str, device_name:str) -> Claim:
-    data = _request('POST', f'{config.get_roasters_url()}/{roaster_id}/claim',
+    data = request('POST', f'{config.get_roasters_url()}/{roaster_id}/claim',
                     json={'sessionId': session_id, 'deviceId': device_id, 'deviceName': device_name})
     try:
         return Claim(
@@ -228,13 +237,13 @@ def claim(roaster_id:str, *, session_id:str, device_id:str, device_name:str) -> 
 
 
 def heartbeat(roaster_id:str, *, session_id:str, version:int) -> datetime|None:
-    data = _request('POST', f'{config.get_roasters_url()}/{roaster_id}/heartbeat', json={'sessionId': session_id, 'version': version})
+    data = request('POST', f'{config.get_roasters_url()}/{roaster_id}/heartbeat', json={'sessionId': session_id, 'version': version})
     return _dt(data.get('leaseExpiresAt')) if isinstance(data, dict) else None
 
 
 def release(roaster_id:str, *, session_id:str, version:int) -> None:
-    _request('POST', f'{config.get_roasters_url()}/{roaster_id}/release', json={'sessionId': session_id, 'version': version})
+    request('POST', f'{config.get_roasters_url()}/{roaster_id}/release', json={'sessionId': session_id, 'version': version})
 
 
 def force_release(roaster_id:str, *, reason:str) -> None:
-    _request('POST', f'{config.get_roasters_url()}/{roaster_id}/force-release', json={'reason': reason})
+    request('POST', f'{config.get_roasters_url()}/{roaster_id}/force-release', json={'reason': reason})

@@ -1,5 +1,6 @@
 """Unit tests for erp.gate: the mandatory ERP login before the main window is shown."""
 
+from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -116,8 +117,8 @@ class FakeDialog:
         self.refreshed += 1
 
 
-def _roaster(rid:str = 'eq1', name:str = 'Máy Rang Nhỏ') -> SimpleNamespace:
-    return SimpleNamespace(id=rid, name=name, code='ROAST-01')
+def _roaster(rid:str = 'eq1', name:str = 'Máy Rang Nhỏ', capacity:str|None = '15.00', unit:str|None = 'kg') -> SimpleNamespace:
+    return SimpleNamespace(id=rid, name=name, code='ROAST-01', capacity=capacity, capacity_unit=unit)
 
 
 def _claim() -> SimpleNamespace:
@@ -132,9 +133,11 @@ def roaster_env(session:MagicMock) -> object:  # noqa: ARG001
     with patch.object(gate, 'RoasterDialog', FakeDialog), \
          patch.object(gate, 'LeaseManager') as manager_cls, \
          patch.object(gate.erp_realtime, 'is_available', return_value=False), \
+         patch.object(gate.roast_flow, 'resume_if_any') as resume, \
+         patch.object(gate, '_start_uploads') as start_uploads, \
          patch.object(gate.erp_banner, 'install') as install:
         install.return_value = MagicMock()
-        yield SimpleNamespace(manager_cls=manager_cls, install=install)
+        yield SimpleNamespace(manager_cls=manager_cls, install=install, resume=resume, start_uploads=start_uploads)
     gate._reset_state()  # pylint: disable=protected-access
 
 
@@ -157,6 +160,8 @@ class TestRequireRoaster:
         manager.start.assert_called_once()
         assert gate.current_lease() is manager
         assert FakeDialog.created[0].user_name == 'Administrator'
+        roaster_env.resume.assert_called_once_with(aw, manager)  # a batch left running by a crash is offered for finishing
+        roaster_env.start_uploads.assert_called_once_with()      # and the files of earlier batches are sent from now on
 
     def test_closing_the_dialog_keeps_the_user_out(self, aw:MagicMock, roaster_env:SimpleNamespace) -> None:
         FakeDialog.script = [{'accept': False}]
@@ -323,3 +328,213 @@ class TestWindowTitle:
         FakeDialog.script = [{'accept': True, 'claim': _claim(), 'roaster': _roaster()}]
         gate.require_roaster(aw)
         assert roaster_env.manager_cls.call_args.args[1] == 'Máy Rang Nhỏ (ROAST-01)'
+
+
+class TestRoastBatch:
+    """The gate carries the roast batch (erp.roast_flow) into the banner, the window title, logout and quit."""
+
+    @pytest.fixture(autouse=True)
+    def _fresh_flow(self) -> Generator[None, None, None]:
+        gate._reset_state()  # pylint: disable=protected-access
+        gate.roast_flow._reset_state()  # pylint: disable=protected-access
+        yield
+        gate._reset_state()  # pylint: disable=protected-access
+        gate.roast_flow._reset_state()  # pylint: disable=protected-access
+
+    @staticmethod
+    def _a_batch() -> object:
+        from erp.batch import Batch
+        return Batch('r1', 3, 'c1', 'LS-1026-000123', 'normal', 'Arabica rang', 'kg', 40.0, 32.0, 15.0, '', 'eq1')
+
+    @pytest.mark.parametrize(('capacity', 'unit', 'expected'), [
+        ('15.00', 'kg', 15.0), ('15', None, 15.0), ('15', 'KG', 15.0), ('15', 'lb', None), (None, 'kg', None), ('abc', 'kg', None), ('0', 'kg', None), ('-3', 'kg', None),
+    ])
+    def test_capacity_of_the_chosen_roaster(self, capacity:str|None, unit:str|None, expected:float|None) -> None:
+        assert gate._capacity_kg(_roaster(capacity=capacity, unit=unit)) == expected  # pylint: disable=protected-access
+
+    def test_adopting_a_roaster_remembers_its_capacity(self, aw:MagicMock, roaster_env:SimpleNamespace) -> None:  # noqa: ARG002
+        FakeDialog.script = [{'accept': True, 'claim': _claim(), 'roaster': _roaster(capacity='12.5')}]
+        gate.require_roaster(aw)
+        assert gate._state.capacity_kg == 12.5  # pylint: disable=protected-access
+
+    def test_start_is_handed_the_roaster_and_its_capacity(self, aw:MagicMock, roaster_env:SimpleNamespace) -> None:
+        FakeDialog.script = [{'accept': True, 'claim': _claim(), 'roaster': _roaster(capacity='12.5')}]
+        gate.require_roaster(aw)
+        with patch.object(gate.roast_flow, 'before_start', return_value=True) as flow:
+            assert gate.before_start(aw) is True
+        args, kwargs = flow.call_args
+        assert args == (aw, roaster_env.manager_cls.return_value) and kwargs['capacity_kg'] == 12.5
+        with patch.object(gate, 'require_login', return_value=True) as login:
+            kwargs['relogin']()
+        login.assert_called_once_with(aw)
+
+    def test_the_banner_finish_button_finishes_the_batch(self, aw:MagicMock, roaster_env:SimpleNamespace) -> None:
+        FakeDialog.script = [{'accept': True, 'claim': _claim(), 'roaster': _roaster()}]
+        gate.require_roaster(aw)
+        bar = roaster_env.install.return_value
+        (slot,), _ = bar.finish_batch.connect.call_args
+        with patch.object(gate.roast_flow, 'finish_batch') as finish:
+            slot()
+        finish.assert_called_once_with(aw)
+
+    def test_a_batch_change_updates_the_banner_and_the_title(self, aw:MagicMock, roaster_env:SimpleNamespace) -> None:
+        FakeDialog.script = [{'accept': True, 'claim': _claim(), 'roaster': _roaster()}]
+        gate.require_roaster(aw)
+        bar = roaster_env.install.return_value
+        aw.updateWindowTitle.reset_mock()
+        gate.roast_flow._flow.batch = self._a_batch()  # pylint: disable=protected-access
+        gate.roast_flow._changed()  # pylint: disable=protected-access
+        text = bar.set_batch.call_args.args[0]
+        assert 'LS-1026-000123 · mẻ #3' in text and 'Arabica rang' in text
+        aw.updateWindowTitle.assert_called()
+
+    def test_a_batch_change_also_refreshes_the_number_of_files_to_send(self, aw:MagicMock, roaster_env:SimpleNamespace) -> None:
+        FakeDialog.script = [{'accept': True, 'claim': _claim(), 'roaster': _roaster()}]
+        gate.require_roaster(aw)
+        queue = MagicMock()
+        queue.pending_count.return_value = 2
+        gate._state.queue = queue  # pylint: disable=protected-access
+        bar = roaster_env.install.return_value
+        gate._on_batch_changed()  # pylint: disable=protected-access
+        bar.set_pending_files.assert_called_with(2)
+
+    def test_the_title_names_the_batch(self, aw:MagicMock, roaster_env:SimpleNamespace) -> None:
+        FakeDialog.script = [{'accept': True, 'claim': _claim(), 'roaster': _roaster()}]
+        gate.require_roaster(aw)
+        manager = roaster_env.manager_cls.return_value
+        manager.state = LeaseState.HELD
+        manager.roaster_name = 'Máy Rang Nhỏ (ROAST-01)'
+        gate.roast_flow._flow.batch = self._a_batch()  # pylint: disable=protected-access
+        title = gate.window_title_suffix()
+        assert title.startswith(' · Máy rang: Máy Rang Nhỏ (ROAST-01)') and 'Đang rang LS-1026-000123 · mẻ #3' in title
+
+    def test_logout_with_an_open_batch_asks_first_and_can_be_cancelled(self, aw:MagicMock, session:MagicMock) -> None:
+        gate.roast_flow._flow.batch = self._a_batch()  # pylint: disable=protected-access
+        with patch.object(gate, 'confirm_logout', return_value=True), patch.object(gate.roast_flow, '_choose', return_value=0) as ask:
+            assert gate.logout(aw) is False
+        ask.assert_called_once()
+        session.logout.assert_not_called()
+
+    def test_logout_confirmed_with_an_open_batch_does_not_ask_again_when_quitting(self, aw:MagicMock, session:MagicMock) -> None:
+        gate.roast_flow._flow.batch = self._a_batch()  # pylint: disable=protected-access
+        with patch.object(gate, 'confirm_logout', return_value=True), patch.object(gate.roast_flow, '_choose', return_value=1) as ask:
+            assert gate.logout(aw) is True
+            assert gate.confirm_quit(aw) is True   # the quit that follows the logout
+        assert ask.call_count == 1
+        session.logout.assert_called_once()
+
+    def test_quitting_with_an_open_batch_asks(self, aw:MagicMock) -> None:
+        gate.roast_flow._flow.batch = self._a_batch()  # pylint: disable=protected-access
+        with patch.object(gate.roast_flow, '_choose', return_value=0):
+            assert gate.confirm_quit(aw) is False
+        with patch.object(gate.roast_flow, '_choose', return_value=1):
+            assert gate.confirm_quit(aw) is True
+
+    def test_quitting_without_a_batch_never_asks(self, aw:MagicMock) -> None:
+        with patch.object(gate.roast_flow, '_choose') as ask:
+            assert gate.confirm_quit(aw) is True
+        ask.assert_not_called()
+
+    def test_the_wrappers_reach_the_flow(self, aw:MagicMock) -> None:
+        with patch.object(gate.roast_flow, 'recording_started') as started, patch.object(gate.roast_flow, 'roast_stopped') as stopped, \
+             patch.object(gate.roast_flow, 'before_reset', return_value=False) as reset, patch.object(gate.roast_flow, 'profile_link', return_value={'a': 1}) as link:
+            gate.recording_started(aw)
+            gate.roast_stopped(aw)
+            assert gate.before_reset(aw) is False
+            assert gate.profile_link(aw) == {'a': 1}
+        for m in (started, stopped, reset, link):
+            m.assert_called_once_with(aw)
+
+
+class TestUploads:
+    """The sender of the files of finished batches: started with the roaster, stopped with it, resumed by a login, reported on the banner."""
+
+    @pytest.fixture(autouse=True)
+    def _fresh(self) -> Generator[None, None, None]:
+        gate._reset_state()  # pylint: disable=protected-access
+        gate.roast_flow._reset_state()  # pylint: disable=protected-access
+        yield
+        gate._stop_uploads()  # pylint: disable=protected-access
+        gate._reset_state()  # pylint: disable=protected-access
+        gate.roast_flow._reset_state()  # pylint: disable=protected-access
+
+    def test_start_creates_the_queue_and_the_sender_once(self, aw:MagicMock) -> None:  # noqa: ARG002
+        with patch.object(gate, 'UploadQueue') as queue_cls, patch.object(gate, 'Uploader') as uploader_cls:
+            queue_cls.return_value.pending_count.return_value = 2
+            gate._start_uploads()  # pylint: disable=protected-access
+            gate._start_uploads()  # pylint: disable=protected-access
+        queue_cls.assert_called_once()
+        uploader_cls.assert_called_once_with(queue_cls.return_value)
+        uploader_cls.return_value.start.assert_called_once()
+        assert gate.roast_flow._flow.queue is queue_cls.return_value  # pylint: disable=protected-access
+        assert gate.roast_flow._flow.uploader is uploader_cls.return_value  # pylint: disable=protected-access
+
+    def test_a_failing_start_never_breaks_anything(self, aw:MagicMock) -> None:  # noqa: ARG002
+        with patch.object(gate, 'UploadQueue', side_effect=OSError('read-only disk')):
+            gate._start_uploads()  # pylint: disable=protected-access
+        assert gate._state.uploader is None  # pylint: disable=protected-access
+
+    def test_stop_does_not_wait_and_switches_the_flow_off(self, aw:MagicMock) -> None:  # noqa: ARG002
+        with patch.object(gate, 'UploadQueue'), patch.object(gate, 'Uploader') as uploader_cls:
+            gate._start_uploads()  # pylint: disable=protected-access
+            gate._stop_uploads()  # pylint: disable=protected-access
+        uploader_cls.return_value.stop.assert_called_once_with(wait=False)
+        assert gate.roast_flow._flow.queue is None and gate._state.uploader is None  # pylint: disable=protected-access
+
+    def test_release_roaster_stops_the_sender_too(self, aw:MagicMock) -> None:  # noqa: ARG002
+        with patch.object(gate, 'UploadQueue'), patch.object(gate, 'Uploader') as uploader_cls:
+            gate._start_uploads()  # pylint: disable=protected-access
+            gate.release_roaster()
+        uploader_cls.return_value.stop.assert_called_once_with(wait=False)
+
+    def test_a_login_sends_what_waited_for_it(self, aw:MagicMock, session:MagicMock) -> None:
+        with patch.object(gate, 'UploadQueue'), patch.object(gate, 'Uploader') as uploader_cls:
+            gate._start_uploads()  # pylint: disable=protected-access
+            session.restore.return_value = True
+            assert gate.require_login(aw) is True
+            uploader_cls.return_value.resume.assert_called_once()
+            uploader_cls.return_value.resume.reset_mock()
+            session.restore.return_value = False
+            with patch.object(gate, 'erp_login', return_value=True):
+                assert gate.require_login(aw) is True
+            uploader_cls.return_value.resume.assert_called_once()
+            uploader_cls.return_value.resume.reset_mock()
+            with patch.object(gate, 'erp_login', return_value=False):
+                assert gate.require_login(aw) is False
+            uploader_cls.return_value.resume.assert_not_called()
+
+    def test_login_without_a_sender_is_fine(self, aw:MagicMock, session:MagicMock) -> None:
+        session.restore.return_value = True
+        assert gate.require_login(aw) is True
+
+    def test_events_update_the_banner_and_the_status_line(self, aw:MagicMock) -> None:
+        from erp.attachments import Job
+        banner = MagicMock()
+        gate._state.banner = banner  # pylint: disable=protected-access
+        gate._state.aw = aw  # pylint: disable=protected-access
+        queue = MagicMock()
+        queue.pending_count.return_value = 3
+        gate._state.queue = queue  # pylint: disable=protected-access
+        job = Job('j1', 'r1', 'pdf', 'LS-1-m3.pdf', 'ab' * 32, 10, 1.0)
+        gate._on_upload_event('sent', job, '')  # pylint: disable=protected-access
+        banner.set_pending_files.assert_called_with(3)
+        assert 'LS-1-m3.pdf' in aw.sendmessage.call_args.args[0]
+
+    def test_a_refused_file_is_explained_with_where_it_was_kept(self, aw:MagicMock) -> None:
+        from erp.attachments import Job
+        gate._state.aw = aw  # pylint: disable=protected-access
+        queue = MagicMock()
+        queue.pending_count.return_value = 0
+        queue.rejected_directory = '/data/erp_upload_queue/rejected'
+        gate._state.queue = queue  # pylint: disable=protected-access
+        job = Job('j1', 'r1', 'alog', 'LS-1-m3.alog', 'ab' * 32, 10, 1.0)
+        with patch.object(gate, 'QMessageBox') as box_cls:
+            gate._on_upload_event('rejected', job, 'File không thuộc mẻ này')  # pylint: disable=protected-access
+        box = box_cls.return_value
+        assert 'LS-1-m3.alog' in box.setText.call_args.args[0]
+        detail = box.setInformativeText.call_args.args[0]
+        assert 'File không thuộc mẻ này' in detail and '/data/erp_upload_queue/rejected' in detail
+        box.exec.assert_called_once()
+
+    def test_events_before_anything_is_set_up_are_harmless(self) -> None:
+        gate._on_upload_event('changed', None, '')  # pylint: disable=protected-access

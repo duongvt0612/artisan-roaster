@@ -7726,6 +7726,8 @@ class tgraphcanvas(QObject):
 
     @pyqtSlot(bool)
     def resetButtonAction(self,_:bool=False) -> None:
+        if not self.aw.erpBeforeReset(): # a batch is still open on the ERP and the operator kept it
+            return
         self.disconnectProbes() # release serial/S7/MODBUS connections
         modifiers = QApplication.keyboardModifiers()
         if modifiers == Qt.KeyboardModifier.AltModifier:  #alt click
@@ -14079,6 +14081,7 @@ class tgraphcanvas(QObject):
                 self.aw.ntb.enable_edit_curve_parameters()
             except Exception as e: # pylint: disable=broad-except
                 _log.exception(e)
+            self.aw.erpRoastStopped() # a batch still open on the ERP is finished now
         except Exception as ex: # pylint: disable=broad-except
             _log.exception(ex)
             _, _, exc_tb = sys.exc_info()
@@ -14097,6 +14100,10 @@ class tgraphcanvas(QObject):
         #turn START
         if not self.flagstart:
             if not self.checkSaved():
+                return
+
+            # ERP: the production command is chosen (and the batch created on the ERP) before anything is recorded
+            if not self.aw.erpBeforeStart():
                 return
 
             # ensure that beans are specified if plus is connected
@@ -14126,6 +14133,7 @@ class tgraphcanvas(QObject):
             except Exception as e: # pylint: disable=broad-except
                 _log.exception(e)
             self.OnRecorder()
+            self.aw.erpRecordingStarted()
         #turn STOP
         else:
             self.aw.soundpopSignal.emit()

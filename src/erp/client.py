@@ -97,10 +97,15 @@ def _check(r:requests.Response, rejected:ErrorKind) -> dict[str, Any]:
     return data
 
 
-def request(method:str, url:str, token:str, json:Any = None, params:dict[str, Any]|None = None) -> requests.Response:
-    """Authenticated request (Bearer). Network problems become ErpAuthError('network'); the status code is the caller's business."""
+def request(method:str, url:str, token:str, json:Any = None, params:dict[str, Any]|None = None,
+            data:dict[str, Any]|None = None, files:dict[str, Any]|None = None) -> requests.Response:
+    """Authenticated request (Bearer). Network problems become ErpAuthError('network'); the status code is the caller's business.
+
+    `data` + `files` make a multipart upload: `files` values must be bytes tuples (name, content, type), not open files, so that the
+    request can be sent again after the access token was renewed."""
     try:
-        return requests.request(method, url, json=json, params=params, headers={'Authorization': f'Bearer {token}'}, timeout=config.timeout)
+        return requests.request(method, url, json=json, params=params, data=data, files=files, headers={'Authorization': f'Bearer {token}'},
+                                timeout=config.upload_timeout if files else config.timeout)
     except requests.exceptions.RequestException as e:
         _log.info('ERP request failed: %s', type(e).__name__)
         raise ErpAuthError('network', str(e)) from e
