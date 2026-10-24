@@ -27,7 +27,7 @@ from collections.abc import Callable
 from typing import Any, Final, TYPE_CHECKING, override
 
 from PyQt6.QtCore import QLocale, QObject, QTimer, Qt, pyqtSignal, pyqtSlot
-from PyQt6.QtGui import QPalette
+from PyQt6.QtGui import QKeySequence, QPalette
 from PyQt6.QtWidgets import (QApplication, QDoubleSpinBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
     QPushButton, QVBoxLayout, QWidget)
 
@@ -98,6 +98,7 @@ def _css(palette:QPalette) -> str:
     prog_bg, prog_fg = ('#16324f', '#9cc9f5') if dark else ('#e1eefb', '#0f3f73')
     pend_bg, pend_fg = ('#2d2d2d', '#d0d0d0') if dark else ('#ececec', '#3c3c3c')
     warn_bg, warn_fg = ('#4a3510', '#ffd37a') if dark else ('#fdf0d5', '#7a4a00')
+    edge, btn, btn_hover = ('#5a5a5a', '#2d2d2d', '#3a3a3a') if dark else ('#c4c4c4', '#ffffff', '#f0f0f0')
     return f"""
         QLabel#erpBadge {{ border-radius: 10px; padding: 3px 10px; font-weight: 600; }}
         QLabel#erpBadge[kind="test"] {{ background: {test_bg}; color: {test_fg}; }}
@@ -109,6 +110,9 @@ def _css(palette:QPalette) -> str:
         QListWidget {{ border-radius: 6px; padding: 2px; outline: 0; }}
         QListWidget::item {{ border-radius: 6px; padding: 2px; }}
         QListWidget::item:selected {{ background: {'#16324f' if dark else '#dbeafe'}; }}
+        QPushButton#erpRefresh {{ min-height: 22px; padding: 5px 14px; border: 1px solid {edge}; border-radius: 6px; background: {btn}; }}
+        QPushButton#erpRefresh:hover {{ background: {btn_hover}; }}
+        QPushButton#erpRefresh:disabled {{ color: {edge}; }}
         QDoubleSpinBox {{ min-height: 22px; padding: 4px 8px; border-radius: 6px; }}
     """
 
@@ -122,7 +126,7 @@ class StartRoundDialog(ArtisanDialog):
 
     __slots__ = [
         'roaster_name', 'capacity_kg', 'started', 'command', 'input_lines', 'need_login', 'busy_with_round', 'lease_lost',
-        'search_edit', 'results', 'statusLabel', 'detail', 'detailTitle', 'inputsBox', 'inputsLayout', 'totalLabel', 'warnLabel', 'errorLabel',
+        'search_edit', 'refresh_button', 'results', 'statusLabel', 'detail', 'detailTitle', 'inputsBox', 'inputsLayout', 'totalLabel', 'warnLabel', 'errorLabel',
         'start_button', 'cancel_button', 'busy', '_api', '_equipment_id', '_session_id', '_version', '_bridge', '_timer', '_seq', '_spins',
         '_commands', '_wanted_id', '_debounce_ms', '_pending',
     ]
@@ -183,6 +187,20 @@ class StartRoundDialog(ArtisanDialog):
         self.search_edit.setAccessibleName(QApplication.translate('ERP', 'Tìm lệnh sản xuất'))
         self.search_edit.setClearButtonEnabled(True)
         label.setBuddy(self.search_edit)
+        # new commands are made in the ERP while this dialog is open: the roaster fetches them on his own, without closing it
+        self.refresh_button = QPushButton(QApplication.translate('ERP', 'Làm mới'))
+        self.refresh_button.setObjectName('erpRefresh')
+        self.refresh_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.refresh_button.setAutoDefault(False)
+        self.refresh_button.setShortcut(QKeySequence(Qt.Key.Key_F5))
+        self.refresh_button.setToolTip(QApplication.translate('ERP', 'Tải lại danh sách lệnh sản xuất từ ERP (F5)'))
+        self.refresh_button.setAccessibleName(QApplication.translate('ERP', 'Làm mới danh sách lệnh sản xuất'))
+        self.refresh_button.clicked.connect(self._search_now)
+        search_row = QHBoxLayout()
+        search_row.setContentsMargins(0, 0, 0, 0)
+        search_row.setSpacing(8)
+        search_row.addWidget(self.search_edit, 1)
+        search_row.addWidget(self.refresh_button)
 
         self.results = QListWidget()
         self.results.setAccessibleName(QApplication.translate('ERP', 'Danh sách lệnh sản xuất'))
@@ -248,7 +266,7 @@ class StartRoundDialog(ArtisanDialog):
         layout.addSpacing(14)
         layout.addWidget(label)
         layout.addSpacing(4)
-        layout.addWidget(self.search_edit)
+        layout.addLayout(search_row)
         layout.addSpacing(6)
         layout.addWidget(self.results, 1)
         layout.addWidget(self.statusLabel)
@@ -261,7 +279,8 @@ class StartRoundDialog(ArtisanDialog):
         layout.addSpacing(4)
         layout.addWidget(self.cancel_button, 0, Qt.AlignmentFlag.AlignHCenter)
 
-        self.setTabOrder(self.search_edit, self.results)
+        self.setTabOrder(self.search_edit, self.refresh_button)
+        self.setTabOrder(self.refresh_button, self.results)
         self.setTabOrder(self.results, self.start_button)
         self.setTabOrder(self.start_button, self.cancel_button)
 
@@ -471,6 +490,7 @@ class StartRoundDialog(ArtisanDialog):
     def _set_busy(self, busy:bool) -> None:
         self.busy = busy
         self.search_edit.setEnabled(not busy)
+        self.refresh_button.setEnabled(not busy)
         self.results.setEnabled(not busy)
         self.inputsBox.setEnabled(not busy)
         self._update_buttons()

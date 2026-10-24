@@ -146,6 +146,63 @@ class TestSearch:
         assert d.need_login and not d.isVisible()
 
 
+class TestRefresh:
+    def test_the_button_loads_the_commands_created_meanwhile(self, qapp:QApplication) -> None:
+        api = FakeApi([cmd('1', 'LS-1')])
+        d = make(qapp, api)
+        assert d.results.count() == 1
+        api.commands.append(cmd('2', 'LS-2'))
+        d.refresh_button.click()
+        _wait(qapp, lambda: d.results.count() == 2)
+        assert d.results.count() == 2 and '2 lệnh' in d.statusLabel.text()
+
+    def test_it_keeps_the_text_searched(self, qapp:QApplication) -> None:
+        api = FakeApi([cmd('1', 'LS-1', name='Arabica'), cmd('2', 'LS-2', name='Robusta')])
+        d = make(qapp, api)
+        d.search_edit.setText('robu')
+        _wait(qapp, lambda: d.results.count() == 1)
+        api.commands.append(cmd('3', 'LS-3', name='Robusta 2'))
+        d.refresh_button.click()
+        _wait(qapp, lambda: d.results.count() == 2)
+        assert api.queries[-1] == 'robu'
+
+    def test_it_keeps_the_pick_and_the_kg_typed(self, qapp:QApplication) -> None:
+        api = FakeApi([cmd('1', 'LS-1')])
+        d = make(qapp, api)
+        pick(qapp, d, '1')
+        d._spins[0][1].setValue(20)  # pylint: disable=protected-access
+        api.commands.append(cmd('2', 'LS-2'))
+        d.refresh_button.click()
+        _wait(qapp, lambda: d.results.count() == 2)
+        selected = d.command_selected()
+        assert selected is not None and selected.command_id == '1'
+        assert d._spins[0][1].value() == 20  # pylint: disable=protected-access
+
+    def test_a_pick_that_is_gone_is_dropped(self, qapp:QApplication) -> None:
+        api = FakeApi([cmd('1', 'LS-1'), cmd('2', 'LS-2')])
+        d = make(qapp, api)
+        pick(qapp, d, '1')
+        api.commands = [cmd('2', 'LS-2')]
+        d.refresh_button.click()
+        _wait(qapp, lambda: d.results.count() == 1)
+        assert d.command_selected() is None and not d.start_button.isEnabled()
+
+    def test_a_failure_is_shown(self, qapp:QApplication) -> None:
+        api = FakeApi([cmd('1', 'LS-1')])
+        d = make(qapp, api)
+        api.search_error = roasters.RoasterUnavailable('network', 'x')
+        d.refresh_button.click()
+        _wait(qapp, lambda: d.errorLabel.isVisible())
+        assert 'mạng' in d.errorLabel.text()
+
+    def test_it_is_off_while_the_batch_is_being_started(self, qapp:QApplication) -> None:
+        d = make(qapp, FakeApi([cmd('1', 'LS-1')]))
+        d._set_busy(True)  # pylint: disable=protected-access
+        assert not d.refresh_button.isEnabled()
+        d._set_busy(False)  # pylint: disable=protected-access
+        assert d.refresh_button.isEnabled()
+
+
 class TestPick:
     def test_picking_shows_the_output_and_the_beans_to_declare(self, qapp:QApplication) -> None:
         d = make(qapp, FakeApi([cmd('1', 'LS-1', name='Arabica Cầu Đất rang', target=120)]))
