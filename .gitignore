@@ -85,3 +85,8 @@ Thumbs.db
 .worktrees
 # the ERP server of a build (written by src/make-erp-config.py; only erp-config.example.json is tracked)
 src/erp-config.json
+
+# Windows build byproducts (Qt Linguist tools, VC++ redistributable, PyInstaller version file)
+QtLinguist/
+vc_redist.x64.exe
+src/version_info-win.txt
