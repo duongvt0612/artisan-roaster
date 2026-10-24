@@ -365,8 +365,10 @@ def _report(aw:'ApplicationWindow', finished:rounds.FinishedRound) -> None:
     except Exception as e: # pylint: disable=broad-except
         _log.exception(e)
     if finished.loss_exceeded:
-        _info(aw, QApplication.translate('ERP', 'Hao hụt {0}% vượt ngưỡng cho phép ({1}%).').format(
-            start_dialog.format_kg(round(finished.loss_percent, 1)), start_dialog.format_kg(finished.tolerance_percent)),
+        deviation = finish_dialog.deviation_percent(finished.output_kg, finished.expected_output_kg)
+        _info(aw, QApplication.translate('ERP', 'Sản lượng {0} kg lệch {1}% so với dự kiến {2} kg, vượt ngưỡng cho phép (±{3}%).').format(
+            start_dialog.format_kg(finished.output_kg), ('+' if deviation > 0 else '') + start_dialog.format_kg(round(deviation, 1)),
+            start_dialog.format_kg(finished.expected_output_kg), start_dialog.format_kg(finished.tolerance_percent)),
               QApplication.translate('ERP', 'ERP đã gửi cảnh báo tới quản lý. Nếu bạn nhập nhầm số kg, hãy báo quản lý sửa trên ERP.'))
 
 

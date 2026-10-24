@@ -58,21 +58,39 @@ def make(qapp:QApplication, api:FakeApi, b:Batch|None = None, **kw:Any) -> finis
 
 
 class TestLossText:
-    def test_loss_and_limit(self, qapp:QApplication) -> None:  # noqa: ARG002
-        text, bad = finish_dialog.loss_text(40, 34, 15)
-        assert '15' in text and ('Hao hụt: 15%' in text) and not bad   # exactly at the limit is fine
-        text, bad = finish_dialog.loss_text(40, 30, 15)
-        assert '25' in text and '15' in text and bad
+    """Red means what the ERP's alert means: the weight is outside expected ± tolerance. The natural roasting loss is already in the expected kg."""
+
+    def test_the_reported_case_is_not_red(self, qapp:QApplication) -> None:  # noqa: ARG002
+        # 1.2 kg in, formula yield 0.82 -> 0.984 expected, 0.964 weighed: 19.7 % lost but only -2.0 % from the formula, tolerance 5 %
+        text, bad = finish_dialog.loss_text(1.2, 0.964, 0.984, 5)
+        assert not bad
+        assert 'Hao hụt' in text and '19' in text and '2' in text and '5' in text
+
+    def test_outside_the_tolerance_is_red_in_both_directions(self, qapp:QApplication) -> None:  # noqa: ARG002
+        assert finish_dialog.loss_text(40, 30, 32, 5)[1]    # -6.25 %
+        assert finish_dialog.loss_text(40, 34, 32, 5)[1]    # +6.25 %
+
+    def test_exactly_at_the_limit_is_fine(self, qapp:QApplication) -> None:  # noqa: ARG002
+        assert not finish_dialog.loss_text(40, 31.2, 32, 2.5)[1]   # -2.5 %
+
+    def test_text_says_loss_deviation_and_limit(self, qapp:QApplication) -> None:  # noqa: ARG002
+        text, _bad = finish_dialog.loss_text(40, 29.6, 32, 5)
+        assert 'Hao hụt: 26%' in text and '-7,5%' in text.replace('.', ',') and '±5%' in text
 
     def test_no_limit_means_never_red(self, qapp:QApplication) -> None:  # noqa: ARG002
-        text, bad = finish_dialog.loss_text(40, 20, 0)
-        assert '50' in text and 'tối đa' not in text and not bad
+        text, bad = finish_dialog.loss_text(40, 20, 32, 0)
+        assert '50' in text and 'cho phép' not in text and not bad
+
+    def test_without_an_expected_weight_nothing_is_compared(self, qapp:QApplication) -> None:  # noqa: ARG002
+        # the ERP gives deviation 0 if it expects nothing: never an alert
+        text, bad = finish_dialog.loss_text(40, 20, 0, 5)
+        assert '50' in text and not bad
 
     def test_nothing_typed_yet(self, qapp:QApplication) -> None:  # noqa: ARG002
-        assert finish_dialog.loss_text(40, 0, 15) == ('', False)
+        assert finish_dialog.loss_text(40, 0, 32, 5) == ('', False)
 
     def test_more_out_than_in_is_a_doubtful_weighing(self, qapp:QApplication) -> None:  # noqa: ARG002
-        text, bad = finish_dialog.loss_text(40, 45, 15)
+        text, bad = finish_dialog.loss_text(40, 45, 32, 5)
         assert 'kiểm tra lại cân' in text and bad
 
 
@@ -91,9 +109,9 @@ class TestDialog:
     def test_loss_follows_the_typed_weight_and_turns_red(self, qapp:QApplication) -> None:
         d = make(qapp, FakeApi())
         assert not d.lossLabel.isVisibleTo(d)
-        d.spin.setValue(34)
+        d.spin.setValue(30)   # expected 32 kg, tolerance 15 %: -6.25 % is inside
         assert d.lossLabel.isVisibleTo(d) and d.lossLabel.property('bad') is False and d.finish_button.isEnabled()
-        d.spin.setValue(30)
+        d.spin.setValue(26)   # -18.75 %
         assert d.lossLabel.property('bad') is True
         d.spin.setValue(0)
         assert not d.finish_button.isEnabled()

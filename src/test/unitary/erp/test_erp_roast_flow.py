@@ -246,11 +246,13 @@ class TestFinish:
         assert FakeFinishDialog.created[0].powder_color == '#85'   # Artisan's ground colour becomes the ERP's "Màu bột"
         assert 'Đã kết thúc mẻ' in aw.messages[0] and '30' in aw.messages[0]
 
-    def test_a_loss_above_the_limit_is_told(self, env:Env) -> None:
+    def test_a_weight_outside_the_tolerance_is_told(self, env:Env) -> None:
         roast_flow._flow.batch = a_batch()  # pylint: disable=protected-access
-        FakeFinishDialog.script = [{'finished': FinishedRound('r1', 3, 30.0, 32.0, 25.0, True, 15.0)}]
+        # 26 kg out where 32 are expected: -18.75 % from the formula, tolerance 15 %
+        FakeFinishDialog.script = [{'finished': FinishedRound('r1', 3, 26.0, 32.0, 35.0, True, 15.0)}]
         roast_flow.finish_batch(FakeAw(), force=True)  # type:ignore[arg-type]
-        assert 'vượt ngưỡng' in env.infos[0][0] and '25' in env.infos[0][0] and '15' in env.infos[0][0]
+        text = env.infos[0][0]
+        assert 'vượt ngưỡng' in text and '18' in text and '15' in text and '32' in text
 
     def test_before_drop_it_waits(self, env:Env) -> None:
         roast_flow._flow.batch = a_batch()  # pylint: disable=protected-access

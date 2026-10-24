@@ -4,8 +4,8 @@
 #
 # ABOUT
 # The dialog that ends a roast batch on the ERP: the operator weighs the roasted beans and types the kg. It shows the kg that went in,
-# the kg the formula expects and the loss ("hao hụt") of what he typed, red when it exceeds what the formula allows, so that a
-# mistyped weight is noticed before the ERP raises its alert. Only when the ERP has accepted the weight does the dialog close.
+# the kg the formula expects and the loss ("hao hụt") of what he typed, red when the weight is outside what the formula allows (expected kg
+# ± tolerance, the rule of the ERP's own alert), so that a mistyped weight is noticed before the ERP raises it. Only when the ERP has accepted the weight does the dialog close.
 
 # LICENSE
 # This program or module is free software: you can redistribute it and/or
@@ -43,17 +43,33 @@ _log: Final[logging.Logger] = logging.getLogger(__name__)
 MAX_OUTPUT_KG: Final[float] = 100000.0
 
 
-def loss_text(input_kg:float, output_kg:float, tolerance_percent:float) -> tuple[str, bool]:
-    """('Hao hụt: 18,5% (tối đa 15%)', exceeded). A weight above what went in is not a loss: it is flagged as a doubtful weighing."""
+def deviation_percent(output_kg:float, expected_kg:float) -> float:
+    """(out − expected) / expected × 100, like the ERP computes it. 0 if the formula expects nothing."""
+    if expected_kg <= 0:
+        return 0.0
+    return (output_kg - expected_kg) / expected_kg * 100
+
+
+def loss_text(input_kg:float, output_kg:float, expected_kg:float, tolerance_percent:float) -> tuple[str, bool]:
+    """('Hao hụt: 18,5% · Lệch so với dự kiến: -2% (cho phép ±5%)', exceeded).
+
+    Exceeded is the ERP's rule: |deviation from the expected kg| > tolerance, in both directions (exactly at the limit is fine). The loss is only
+    shown: the natural roasting loss is already part of the expected kg, so comparing it with the tolerance would flag every good batch.
+    A weight above what went in is not a loss: it is flagged as a doubtful weighing."""
     if output_kg <= 0:
         return '', False
     if output_kg > input_kg:
         return QApplication.translate('ERP', 'Số kg thành phẩm lớn hơn cà phê nhân đã đưa vào: hãy kiểm tra lại cân.'), True
     loss = loss_percent(input_kg, output_kg)
     text = QApplication.translate('ERP', 'Hao hụt: {0}%').format(format_kg(round(loss, 1)))
+    if expected_kg <= 0:
+        return text, False
+    deviation = deviation_percent(output_kg, expected_kg)
+    text += QApplication.translate('ERP', ' · Lệch so với dự kiến: {0}%').format(('+' if deviation > 0 else '') + format_kg(round(deviation, 1)))
     if tolerance_percent > 0:
-        text += QApplication.translate('ERP', ' (tối đa {0}%)').format(format_kg(tolerance_percent))
-    return text, tolerance_percent > 0 and loss > tolerance_percent
+        text += QApplication.translate('ERP', ' (cho phép ±{0}%)').format(format_kg(tolerance_percent))
+    # rounded: (31.2 - 32) / 32 * 100 is -2.5000000000000044, and a scale reads 0.001 kg at best, so this must not tip a weight exactly at the limit
+    return text, tolerance_percent > 0 and round(abs(deviation), 6) > tolerance_percent
 
 
 def _css(palette:QPalette) -> str:
@@ -199,7 +215,7 @@ class FinishRoundDialog(ArtisanDialog):
         self._update()
 
     def _update(self) -> None:
-        text, bad = loss_text(self.batch.input_kg, self.spin.value(), self.batch.tolerance_percent)
+        text, bad = loss_text(self.batch.input_kg, self.spin.value(), self.batch.expected_output_kg, self.batch.tolerance_percent)
         self.lossLabel.setText(text)
         self.lossLabel.setVisible(bool(text))
         self.lossLabel.setProperty('bad', bad)
