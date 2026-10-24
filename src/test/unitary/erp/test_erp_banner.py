@@ -47,6 +47,12 @@ def test_suspect_warns_about_the_connection(bar:banner.LeaseBanner) -> None:
     ('lease_lost', 'phiên khác'),
     ('force_released', 'ép nhả'),
     ('session_expired', 'đăng nhập'),
+    ('session_kicked_self', 'thiết bị khác'),
+    ('session_kicked_admin', 'quản trị viên'),
+    ('session_password_changed', 'mật khẩu'),
+    ('session_password_reset', 'đặt lại mật khẩu'),
+    ('session_user_disabled', 'bị khoá'),
+    ('session_reuse_detected', 'bất thường'),
     ('not_found', 'không còn'),
     ('forbidden', 'quyền'),
     ('something_new', 'Máy Rang Nhỏ'),   # unknown reasons still produce a readable message

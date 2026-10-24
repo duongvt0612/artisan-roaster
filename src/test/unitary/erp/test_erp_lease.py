@@ -82,6 +82,8 @@ def test_lease_lost_is_terminal_and_reported_once() -> None:
 
 @pytest.mark.parametrize(('error', 'reason'), [
     (roasters.SessionExpired('hết hạn'), 'session_expired'),
+    (roasters.SessionExpired('kick', 'kicked_admin'), 'session_kicked_admin'),
+    (roasters.SessionExpired('kick', ''), 'session_expired'),
     (roasters.RoasterNotFound('không có'), 'not_found'),
     (roasters.RoasterForbidden('không quyền'), 'forbidden'),
 ])
@@ -90,6 +92,15 @@ def test_other_definitive_answers_also_end_the_lease(error:Exception, reason:str
     api.heartbeat_error = error
     assert m.tick() is False
     assert events == [(LeaseState.LOST, reason)]
+
+
+def test_session_revoked_over_realtime_ends_the_lease_at_once() -> None:
+    m, _api, _clock, events = _manager()
+    m.notify_session_revoked('password_changed')
+    assert m.state is LeaseState.LOST
+    assert events == [(LeaseState.LOST, 'session_password_changed')]
+    m.notify_session_revoked('password_changed')  # reported once
+    assert len(events) == 1
 
 
 def test_network_trouble_turns_suspect_only_after_most_of_the_ttl_and_recovers() -> None:

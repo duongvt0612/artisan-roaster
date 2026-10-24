@@ -55,6 +55,16 @@ def ask_retry(error:ErpAuthError) -> bool:
     return box.clickedButton() is retry
 
 
+def show_session_ended(message:str) -> None:
+    """The ERP ended the stored session while Artisan was closed (kicked, password changed, ...): says why before asking to log in again."""
+    box = QMessageBox()
+    box.setIcon(QMessageBox.Icon.Information)
+    box.setWindowTitle('ERP')
+    box.setText(QApplication.translate('ERP', 'Phiên đăng nhập ERP đã kết thúc'))
+    box.setInformativeText(message)
+    box.exec()
+
+
 def confirm_logout(aw:'ApplicationWindow') -> bool:
     box = QMessageBox(aw)
     box.setIcon(QMessageBox.Icon.Question)
@@ -98,6 +108,8 @@ def require_login(aw:'ApplicationWindow') -> bool:
             _log.info('ERP session could not be verified: %s', e.kind)
             if not ask_retry(e):
                 return False
+    if session.ended_message:
+        show_session_ended(session.ended_message)
     logged_in = erp_login(aw, session.stored_username())
     if logged_in:
         _resume_uploads() # files that waited for the login are sent now
@@ -191,6 +203,14 @@ def _on_realtime_lease_lost(payload:dict[str, Any]) -> None:
         manager.notify_lease_lost(str(payload.get('equipmentId') or ''), str(payload.get('reason') or 'lease_lost'))
 
 
+def _on_realtime_session_revoked(reason:str) -> None:
+    """The ERP ended our login session (kicked, password changed, ...): forget it. The roaster is not ours any more either, say so at once."""
+    session.revoke(reason)
+    manager = _state.manager
+    if manager is not None:
+        manager.notify_session_revoked(reason)
+
+
 def _start_realtime() -> None:
     """The realtime channel only speeds things up; Artisan is correct without it."""
     if _state.realtime is not None or not erp_realtime.is_available():
@@ -200,6 +220,7 @@ def _start_realtime() -> None:
         get_token=session.fresh_access_token,
         on_changed=_on_realtime_changed,
         on_lease_lost=_on_realtime_lease_lost,
+        on_session_revoked=_on_realtime_session_revoked,
     )
     client.start()
     _state.realtime = client

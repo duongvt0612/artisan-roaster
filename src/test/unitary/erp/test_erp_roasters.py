@@ -152,6 +152,18 @@ class TestErrorMapping:
         with pytest.raises(roasters.SessionExpired):
             roasters.list_roasters('s1')
 
+    def test_ended_session_keeps_its_reason(self, sess:Any) -> None:
+        sess.authed_request.side_effect = client.ErpAuthError('invalid_session', 'kicked', 'kicked_admin')
+        with pytest.raises(roasters.SessionExpired) as exc:
+            roasters.list_roasters('s1')
+        assert exc.value.reason == 'kicked_admin'
+
+    def test_401_after_the_retry_keeps_the_reason_of_the_body(self, sess:Any) -> None:
+        sess.authed_request.return_value = _resp(401, {'success': False, 'errors': ['SESSION_REVOKED', 'password_reset'], 'errorMessages': ['x'], 'data': None})
+        with pytest.raises(roasters.SessionExpired) as exc:
+            roasters.list_roasters('s1')
+        assert exc.value.reason == 'password_reset'
+
     @pytest.mark.parametrize(('status', 'kind'), [(500, 'server'), (502, 'server'), (429, 'rate_limited')])
     def test_server_and_rate_limit(self, sess:Any, status:int, kind:str) -> None:
         sess.authed_request.return_value = _resp(status, None)

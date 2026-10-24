@@ -60,6 +60,7 @@ class Harness:
         self.tokens = list(tokens) if tokens is not None else ['tok1']
         self.changed:list[dict[str, Any]] = []
         self.lost:list[dict[str, Any]] = []
+        self.revoked:list[str] = []
         self.waits:list[float] = []
         self.connected = threading.Event()
 
@@ -72,6 +73,7 @@ class Harness:
             get_token=self.get_token,
             on_changed=self.changed.append,
             on_lease_lost=self.lost.append,
+            on_session_revoked=self.revoked.append,
             client_factory=FakeSio,
             **kw,
         )
@@ -181,3 +183,38 @@ def test_stop_is_idempotent_and_safe_before_start() -> None:
 
 def test_availability_reflects_whether_python_socketio_is_importable() -> None:
     assert isinstance(realtime.is_available(), bool)
+
+
+def test_session_revoked_is_reported_and_the_channel_stops_for_good() -> None:
+    h = Harness()
+    c = h.make(backoff=(0.01, 0.02))
+    c.start()
+    assert _wait_for(lambda: FakeSio.instances and 'auth:session-revoked' in FakeSio.instances[0].handlers)
+    sio = FakeSio.instances[0]
+    sio.handlers['auth:session-revoked']({'reason': 'kicked_admin'})
+    sio.hold.set()  # the server drops the socket right after the event
+    assert _wait_for(lambda: not c.is_running)
+    assert h.revoked == ['kicked_admin']
+    assert len(FakeSio.instances) == 1  # no reconnect with a dead session
+
+
+@pytest.mark.parametrize('payload', [None, {}, {'reason': ''}, {'reason': 5}, 'x'])
+def test_session_revoked_without_a_usable_reason_is_reported_with_an_empty_one(payload:Any) -> None:
+    h = Harness()
+    c = h.make()
+    c.start()
+    assert _wait_for(lambda: FakeSio.instances and 'auth:session-revoked' in FakeSio.instances[0].handlers)
+    FakeSio.instances[0].handlers['auth:session-revoked'](payload)
+    assert h.revoked == ['']
+    c.stop()
+
+
+def test_a_failing_revoked_callback_does_not_break_the_channel() -> None:
+    def boom(_reason:str) -> None:
+        raise RuntimeError('ui bug')
+    c = RealtimeClient(url='http://x', get_token=lambda: 'tok', client_factory=FakeSio, on_changed=lambda _p: None,
+                       on_lease_lost=lambda _p: None, on_session_revoked=boom)
+    c.start()
+    assert _wait_for(lambda: FakeSio.instances and 'auth:session-revoked' in FakeSio.instances[0].handlers)
+    FakeSio.instances[0].handlers['auth:session-revoked']({'reason': 'logout'})
+    c.stop()

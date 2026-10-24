@@ -101,11 +101,12 @@ class TestRestore:
     def test_success(self, kr:FakeKeyring) -> None:
         kr.store[(config.keyring_service(), 'refresh_token')] = 'r1'
         s = Session()
-        with patch('erp.session.client.refresh', return_value=_result('a2', 'r1')) as refresh:
+        with patch('erp.session.client.refresh', return_value=_result('a2', 'r2')) as refresh:
             assert s.restore() is True
         refresh.assert_called_once_with('r1')
         assert s.is_authenticated
         assert s.access_token == 'a2'
+        assert s.ended_message is None
 
     def test_rotated_refresh_token_is_stored(self, kr:FakeKeyring) -> None:
         kr.store[(config.keyring_service(), 'refresh_token')] = 'r1'
@@ -122,6 +123,22 @@ class TestRestore:
             assert s.restore() is False
         assert not s.is_authenticated
         assert _stored(kr) == {'username': 'admin'}
+
+    def test_session_ended_by_the_erp_keeps_its_reason_for_the_user(self, kr:FakeKeyring) -> None:
+        kr.store[(config.keyring_service(), 'refresh_token')] = 'r1'
+        s = Session()
+        error = client.ErpAuthError('invalid_session', 'Phiên đăng nhập này đã bị quản trị viên kết thúc.', 'kicked_admin')
+        with patch('erp.session.client.refresh', side_effect=error):
+            assert s.restore() is False
+        assert s.ended_message == 'Phiên đăng nhập này đã bị quản trị viên kết thúc.'
+        assert _stored(kr) == {}
+
+    def test_plain_expiry_has_no_message(self, kr:FakeKeyring) -> None:
+        kr.store[(config.keyring_service(), 'refresh_token')] = 'r1'
+        s = Session()
+        with patch('erp.session.client.refresh', side_effect=client.ErpAuthError('invalid_session', 'expired')):
+            s.restore()
+        assert s.ended_message is None
 
     @pytest.mark.parametrize('kind', ['network', 'server', 'rate_limited'])
     def test_transient_errors_propagate_and_keep_the_stored_token(self, kr:FakeKeyring, kind:Any) -> None:
@@ -145,8 +162,8 @@ class TestLogoutAndClear:
             s.login('admin', 'secret1', remember=True)
         with patch('erp.session.client.logout', return_value=True) as logout:
             s.logout()
-        # the ERP is told WHICH session / refresh token ends: nothing else of the user is logged out
-        logout.assert_called_once_with('a1', session_id=device.session_id(), refresh_token='r1')
+        # the ERP is told WHICH Artisan run (lease session) ends; it knows the login session from the access token
+        logout.assert_called_once_with('a1', session_id=device.session_id())
         assert not s.is_authenticated
         assert s.user is None
         assert _stored(kr) == {}

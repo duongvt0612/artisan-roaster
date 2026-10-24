@@ -37,6 +37,7 @@ _log: Final[logging.Logger] = logging.getLogger(__name__)
 ROOM_ROASTERS: Final[str] = 'roasters'
 EVENT_CHANGED: Final[str] = 'roaster:changed'
 EVENT_LEASE_LOST: Final[str] = 'roaster:lease-lost'
+EVENT_SESSION_REVOKED: Final[str] = 'auth:session-revoked' # the login session was ended; the server drops the socket right after it
 
 Payload = dict[str, Any]
 
@@ -63,6 +64,7 @@ class RealtimeClient:
         get_token:Callable[[], str|None],
         on_changed:Callable[[Payload], None],
         on_lease_lost:Callable[[Payload], None],
+        on_session_revoked:Callable[[str], None] = lambda _reason: None,
         client_factory:Callable[..., Any] = _default_factory,
         backoff:tuple[float, float] = (5.0, 60.0),
         wait:Callable[[float], bool]|None = None,
@@ -71,6 +73,7 @@ class RealtimeClient:
         self._get_token:Callable[[], str|None] = get_token
         self._on_changed:Callable[[Payload], None] = on_changed
         self._on_lease_lost:Callable[[Payload], None] = on_lease_lost
+        self._on_session_revoked:Callable[[str], None] = on_session_revoked
         self._factory:Callable[..., Any] = client_factory
         self._backoff:tuple[float, float] = backoff
         self._stop:threading.Event = threading.Event()
@@ -110,6 +113,17 @@ class RealtimeClient:
         except Exception as e: # pylint: disable=broad-except
             _log.exception(e)
 
+    def _revoked(self, payload:Any) -> None:
+        """The ERP ended our login session: there is nothing to reconnect with, so the channel stops for good.
+
+        The reason may be empty (the periodic check of the server does not know it)."""
+        reason = payload.get('reason') if isinstance(payload, dict) else None
+        self._stop.set() # first: the disconnect that follows must not start another attempt
+        try:
+            self._on_session_revoked(reason if isinstance(reason, str) else '')
+        except Exception as e: # pylint: disable=broad-except
+            _log.exception(e)
+
     def _run(self) -> None:
         base, cap = self._backoff
         delay = base
@@ -135,6 +149,7 @@ class RealtimeClient:
         sio = self._factory(reconnection=False, logger=False, engineio_logger=False)
         sio.on(EVENT_CHANGED, lambda payload=None: self._dispatch(self._on_changed, payload))
         sio.on(EVENT_LEASE_LOST, lambda payload=None: self._dispatch(self._on_lease_lost, payload))
+        sio.on(EVENT_SESSION_REVOKED, lambda payload=None: self._revoked(payload))
         sio.on('error', lambda payload=None: _log.info('realtime gateway error: %s', payload))
         with self._lock:
             self._sio = sio

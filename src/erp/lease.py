@@ -38,6 +38,11 @@ from erp import config, roasters
 _log: Final[logging.Logger] = logging.getLogger(__name__)
 
 
+def session_reason(reason:str|None) -> str:
+    """The reason of a lease lost because the login session ended: 'session_expired' if it only expired, 'session_<code>' if the ERP ended it."""
+    return f'session_{reason}' if reason else 'session_expired'
+
+
 class LeaseState(enum.Enum):
     IDLE = 'idle'
     HELD = 'held'
@@ -116,8 +121,8 @@ class LeaseManager:
             self._api.heartbeat(self.roaster_id, session_id=self._session_id, version=self.version)
         except roasters.LeaseLost:
             return self._definitive('lease_lost')
-        except roasters.SessionExpired:
-            return self._definitive('session_expired')
+        except roasters.SessionExpired as e:
+            return self._definitive(session_reason(e.reason))
         except roasters.RoasterNotFound:
             return self._definitive('not_found')
         except roasters.RoasterForbidden:
@@ -144,6 +149,11 @@ class LeaseManager:
     def _unreachable(self) -> None:
         if self._state is LeaseState.HELD and self._clock() - self._last_ok >= self._suspect_after and not self._stop.is_set():
             self._set_state(LeaseState.SUSPECT, 'no_connection')
+
+    def notify_session_revoked(self, reason:str) -> None:
+        """The ERP told over the realtime channel that our login session was ended: the heartbeat could not renew the lease anyway."""
+        if self._state in (LeaseState.HELD, LeaseState.SUSPECT) and not self._stop.is_set():
+            self._lose(session_reason(reason))
 
     def notify_lease_lost(self, roaster_id:str, reason:str) -> None:
         """The ERP told us over the realtime channel (e.g. a forced release): no need to wait for the next heartbeat."""

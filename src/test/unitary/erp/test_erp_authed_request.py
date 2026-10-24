@@ -76,6 +76,47 @@ def test_refreshes_once_on_401_and_retries_with_the_new_token() -> None:
     assert second.kwargs['json'] == {'a': 1}
 
 
+def test_rotated_refresh_token_replaces_the_remembered_one_at_once(kr:FakeKeyring) -> None:
+    s = _logged_in(remember=True)
+    with patch('erp.client.requests.request', side_effect=[_response(401), _response(200, {})]), \
+         patch('erp.session.client.refresh', return_value=client.AuthResult('a2', 'r2', USER)):
+        s.authed_request('GET', 'http://erp/api/x')
+    assert s.refresh_token == 'r2'
+    assert kr.store[(session_module.config.keyring_service(), 'refresh_token')] == 'r2'
+
+
+def test_rotated_refresh_token_without_remember_stays_out_of_the_keyring(kr:FakeKeyring) -> None:
+    s = _logged_in(remember=False)
+    with patch('erp.client.requests.request', side_effect=[_response(401), _response(200, {})]), \
+         patch('erp.session.client.refresh', return_value=client.AuthResult('a2', 'r2', USER)):
+        s.authed_request('GET', 'http://erp/api/x')
+    assert s.refresh_token == 'r2'
+    assert kr.store == {}
+
+
+def test_session_revoked_is_not_refreshed_but_ends_the_session() -> None:
+    s = _logged_in(remember=True)
+    body = {'success': False, 'errors': ['SESSION_REVOKED', 'kicked_admin'], 'errorMessages': ['Phiên đăng nhập này đã bị quản trị viên kết thúc.'], 'data': None}
+    with patch('erp.client.requests.request', return_value=_response(401, body)) as req, \
+         patch('erp.session.client.refresh') as refresh, \
+         pytest.raises(client.ErpAuthError) as exc:
+        s.authed_request('GET', 'http://erp/api/x')
+    refresh.assert_not_called()  # refreshing a dead session fails anyway
+    assert req.call_count == 1
+    assert exc.value.kind == 'invalid_session'
+    assert exc.value.reason == 'kicked_admin'
+    assert not s.is_authenticated
+    assert s.ended_message == client.revoked_text('kicked_admin')
+
+
+def test_revoke_forgets_the_session_and_remembers_why(kr:FakeKeyring) -> None:
+    s = _logged_in(remember=True)
+    s.revoke('')
+    assert not s.is_authenticated and s.refresh_token is None
+    assert s.ended_message == client.revoked_text('')
+    assert (session_module.config.keyring_service(), 'refresh_token') not in kr.store
+
+
 def test_a_second_401_after_refresh_is_returned_not_looped() -> None:
     s = _logged_in()
     with patch('erp.client.requests.request', side_effect=[_response(401), _response(401)]) as req, \

@@ -26,7 +26,7 @@ from datetime import datetime
 from typing import Any, Final
 
 from erp import config
-from erp.client import ErpAuthError
+from erp.client import ErpAuthError, revoked_reason
 from erp.session import session
 
 _log: Final[logging.Logger] = logging.getLogger(__name__)
@@ -61,7 +61,13 @@ class RoasterForbidden(RoasterError):
 
 
 class SessionExpired(RoasterError):
-    """The ERP login is not valid any more; the user has to log in again."""
+    """The ERP login is not valid any more; the user has to log in again.
+
+    `reason` is the code the ERP gave if it ended the session on purpose (e.g. 'kicked_admin', '' if it gave none), None if it just expired."""
+
+    def __init__(self, message:str, reason:str|None = None) -> None:
+        super().__init__(message)
+        self.reason:str|None = reason
 
 
 class RoasterUnavailable(RoasterError):
@@ -157,7 +163,7 @@ def request(method:str, url:str, *, json:Any = None, params:dict[str, Any]|None 
         response = session.authed_request(method, url, json=json, params=params, **extra)
     except ErpAuthError as e:
         if e.kind == 'invalid_session':
-            raise SessionExpired(e.message) from e
+            raise SessionExpired(e.message, e.reason) from e
         raise RoasterUnavailable(e.kind, e.message) from e
     status = response.status_code
     body = _json(response)
@@ -167,7 +173,7 @@ def request(method:str, url:str, *, json:Any = None, params:dict[str, Any]|None 
         raise RoasterUnavailable('server', 'Phản hồi của ERP không đúng định dạng')
     message = _message(body, f'HTTP {status}')
     if status == 401:
-        raise SessionExpired(message)
+        raise SessionExpired(message, revoked_reason(body))
     if status == 403:
         raise RoasterForbidden(message)
     if status == 404:

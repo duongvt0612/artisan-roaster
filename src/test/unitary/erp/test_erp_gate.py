@@ -18,6 +18,7 @@ def session() -> MagicMock:
     with patch.object(gate, 'session') as s:
         s.is_authenticated = False
         s.stored_username.return_value = 'admin'
+        s.ended_message = None
         yield s
 
 
@@ -38,6 +39,22 @@ class TestRequireLogin:
         with patch.object(gate, 'erp_login', return_value=True) as login:
             assert gate.require_login(aw) is True
         login.assert_called_once_with(aw, 'admin')
+
+    def test_session_ended_by_the_erp_is_explained_before_the_login(self, aw:MagicMock, session:MagicMock) -> None:
+        session.restore.return_value = False
+        session.ended_message = 'Phiên đăng nhập đã bị quản trị viên kết thúc.'
+        order:list[str] = []
+        with patch.object(gate, 'show_session_ended', side_effect=lambda m: order.append(m)) as shown, \
+             patch.object(gate, 'erp_login', side_effect=lambda *_a: order.append('login') or True):
+            assert gate.require_login(aw) is True
+        shown.assert_called_once_with('Phiên đăng nhập đã bị quản trị viên kết thúc.')
+        assert order == ['Phiên đăng nhập đã bị quản trị viên kết thúc.', 'login']
+
+    def test_plain_expiry_goes_to_the_login_without_a_message(self, aw:MagicMock, session:MagicMock) -> None:
+        session.restore.return_value = False
+        with patch.object(gate, 'show_session_ended') as shown, patch.object(gate, 'erp_login', return_value=True):
+            gate.require_login(aw)
+        shown.assert_not_called()
 
     def test_cancelled_login_refuses_entry(self, aw:MagicMock, session:MagicMock) -> None:
         session.restore.return_value = False
@@ -70,6 +87,24 @@ class TestRequireLogin:
         with patch.object(gate, 'ask_retry', return_value=False) as retry:
             assert gate.require_login(aw) is False
         retry.assert_called_once()
+
+
+class TestRealtimeSessionRevoked:
+    def test_forgets_the_session_and_tells_the_lease(self, session:MagicMock) -> None:
+        manager = MagicMock()
+        gate._reset_state()
+        gate._state.manager = manager
+        try:
+            gate._on_realtime_session_revoked('kicked_admin')
+        finally:
+            gate._reset_state()
+        session.revoke.assert_called_once_with('kicked_admin')
+        manager.notify_session_revoked.assert_called_once_with('kicked_admin')
+
+    def test_works_before_a_roaster_was_chosen(self, session:MagicMock) -> None:
+        gate._reset_state()
+        gate._on_realtime_session_revoked('')
+        session.revoke.assert_called_once_with('')
 
 
 class TestLogoutAction:

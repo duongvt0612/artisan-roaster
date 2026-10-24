@@ -116,22 +116,38 @@ class TestLogin:
 
 
 class TestRefresh:
-    def test_success_keeps_the_given_refresh_token(self) -> None:
-        # the ERP refresh endpoint returns only a new access token (no rotation)
-        body = _ok({'accessToken': 'a2', 'user': USER})
+    def test_success_returns_the_rotated_refresh_token(self) -> None:
+        body = _ok({'accessToken': 'a2', 'refreshToken': 'r2', 'sessionId': 's1', 'user': USER})
         with patch('erp.client.requests.post', return_value=_response(200, body)) as post:
             result = client.refresh('r1')
         assert result.access_token == 'a2'
-        assert result.refresh_token == 'r1'
+        assert result.refresh_token == 'r2'
         assert result.user == USER
         args, kwargs = post.call_args
         assert args[0] == config.get_refresh_url()
         assert kwargs['json'] == {'refreshToken': 'r1'}
 
-    def test_rotated_refresh_token_is_used_if_server_sends_one(self) -> None:
-        body = _ok({'accessToken': 'a2', 'refreshToken': 'r2', 'user': USER})
-        with patch('erp.client.requests.post', return_value=_response(200, body)):
-            assert client.refresh('r1').refresh_token == 'r2'
+    @pytest.mark.parametrize('data', [
+        {'accessToken': 'a2', 'user': USER},                          # the ERP always rotates: no new token is an unusable reply
+        {'accessToken': 'a2', 'refreshToken': '', 'user': USER},
+        {'refreshToken': 'r2', 'user': USER},
+    ])
+    def test_reply_without_a_new_refresh_token_is_a_server_error(self, data:dict[str, Any]) -> None:
+        with patch('erp.client.requests.post', return_value=_response(200, _ok(data))), pytest.raises(client.ErpAuthError) as exc:
+            client.refresh('r1')
+        assert exc.value.kind == 'server'
+
+    def test_ended_session_carries_its_reason(self) -> None:
+        body = {'success': False, 'errors': ['SESSION_REVOKED', 'reuse_detected'], 'errorMessages': ['Phát hiện bất thường'], 'data': None}
+        with patch('erp.client.requests.post', return_value=_response(401, body)), pytest.raises(client.ErpAuthError) as exc:
+            client.refresh('r1')
+        assert exc.value.kind == 'invalid_session'
+        assert exc.value.reason == 'reuse_detected'
+
+    def test_plain_401_has_no_reason(self) -> None:
+        with patch('erp.client.requests.post', return_value=_response(401, _fail('hết hạn'))), pytest.raises(client.ErpAuthError) as exc:
+            client.refresh('r1')
+        assert exc.value.reason is None
 
     def test_invalid_refresh_token(self) -> None:
         with patch('erp.client.requests.post', return_value=_response(401, _fail('Phiên đăng nhập không hợp lệ'))), pytest.raises(client.ErpAuthError) as exc:
@@ -150,30 +166,69 @@ class TestRefresh:
         assert exc.value.kind == 'network'
 
 
+class TestHeaders:
+    """The ERP answers 400 to a login / refresh without X-Client-Type, and shows X-Device-Name in the list of sessions."""
+
+    def test_login_and_refresh_say_who_they_are(self) -> None:
+        body = _ok({'accessToken': 'a', 'refreshToken': 'r', 'user': USER})
+        with patch('erp.client.requests.post', return_value=_response(200, body)) as post, patch('erp.client.device.device_name', return_value='Máy rang 1'):
+            client.login('admin', 'secret1')
+            client.refresh('r')
+        for call in post.call_args_list:
+            assert call.kwargs['headers']['X-Client-Type'] == 'artisan'
+            assert call.kwargs['headers']['X-Device-Name'] == 'M?y rang 1' # latin-1 safe: what a header can carry
+
+    def test_logout_keeps_the_bearer_header_next_to_them(self) -> None:
+        with patch('erp.client.requests.post', return_value=_response(200, _ok({}))) as post:
+            client.logout('a1', session_id='s1')
+        headers = post.call_args.kwargs['headers']
+        assert headers['X-Client-Type'] == 'artisan'
+        assert headers['Authorization'] == 'Bearer a1'
+
+    def test_authenticated_requests_carry_them_too(self) -> None:
+        with patch('erp.client.requests.request', return_value=_response(200, {})) as req:
+            client.request('GET', 'http://x/api/roasters', 'a1')
+        headers = req.call_args.kwargs['headers']
+        assert headers['X-Client-Type'] == 'artisan'
+        assert headers['Authorization'] == 'Bearer a1'
+
+
+class TestRevokedReason:
+    def test_reads_the_reason(self) -> None:
+        assert client.revoked_reason({'errors': ['SESSION_REVOKED', 'kicked_admin']}) == 'kicked_admin'
+
+    def test_reason_may_be_missing(self) -> None:
+        assert client.revoked_reason({'errors': ['SESSION_REVOKED']}) == ''
+
+    @pytest.mark.parametrize('body', [None, [], {}, {'errors': []}, {'errors': ['x', 'SESSION_REVOKED']}, {'errors': 'SESSION_REVOKED'}])
+    def test_anything_else_is_not_a_revoked_session(self, body:Any) -> None:
+        assert client.revoked_reason(body) is None
+
+    def test_known_and_unknown_reasons_have_a_text(self) -> None:
+        assert 'quản trị viên' in client.revoked_text('kicked_admin')
+        assert client.revoked_text('') == client.revoked_text('something_new')
+
+
 class TestLogout:
     """Artisan's own logout: gives the roaster of THIS session back and revokes THIS refresh token. The user stays logged in on the web / mobile."""
 
-    def test_sends_bearer_token_session_and_refresh_token(self) -> None:
+    def test_sends_bearer_token_and_only_the_lease_session(self) -> None:
         with patch('erp.client.requests.post', return_value=_response(200, _ok({'message': 'ok'}))) as post:
-            assert client.logout('a1', session_id='s1', refresh_token='r1') is True
+            assert client.logout('a1', session_id='s1') is True
         args, kwargs = post.call_args
         assert args[0] == config.get_logout_url()
         assert kwargs['headers']['Authorization'] == 'Bearer a1'
-        assert kwargs['json'] == {'sessionId': 's1', 'refreshToken': 'r1'}
+        # a refreshToken in the body is refused by the ERP with 400: it knows the login session from the access token
+        assert kwargs['json'] == {'sessionId': 's1'}
 
     def test_does_not_use_the_logout_that_revokes_every_device(self) -> None:
         with patch('erp.client.requests.post', return_value=_response(200, _ok({'message': 'ok'}))) as post:
-            client.logout('a1', session_id='s1', refresh_token='r1')
+            client.logout('a1', session_id='s1')
         assert post.call_args[0][0].endswith('/artisan/logout')
         assert not post.call_args[0][0].endswith('/auth/logout')
 
-    def test_refresh_token_is_optional(self) -> None:
-        with patch('erp.client.requests.post', return_value=_response(200, _ok({'message': 'ok'}))) as post:
-            assert client.logout('a1', session_id='s1', refresh_token=None) is True
-        assert post.call_args[1]['json'] == {'sessionId': 's1'}
-
     def test_is_best_effort(self) -> None:
         with patch('erp.client.requests.post', side_effect=requests.exceptions.ConnectionError('down')):
-            assert client.logout('a1', session_id='s1', refresh_token='r1') is False
+            assert client.logout('a1', session_id='s1') is False
         with patch('erp.client.requests.post', return_value=_response(401, _fail('Unauthorized'))):
-            assert client.logout('a1', session_id='s1', refresh_token='r1') is False
+            assert client.logout('a1', session_id='s1') is False

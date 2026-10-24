@@ -79,15 +79,24 @@ def _seconds_left(token:str) -> float:
         return 0.0
 
 
+def _body(response:requests.Response) -> Any:
+    try:
+        return response.json()
+    except ValueError:
+        return None
+
+
 class Session:
 
-    __slots__ = ['access_token', 'refresh_token', 'user', '_lock']
+    __slots__ = ['access_token', 'refresh_token', 'user', 'ended_message', '_lock']
 
     def __init__(self) -> None:
         self.access_token:str|None = None
         # kept in memory even if "remember" is off: the access token only lives 15 minutes, a long session must be able to renew it
         self.refresh_token:str|None = None
         self.user:dict[str, Any]|None = None
+        # why the ERP ended the last session, for the user to read (None if it was not on purpose or nothing happened since the last login)
+        self.ended_message:str|None = None
         self._lock:threading.Lock = threading.Lock()
 
     @property
@@ -98,6 +107,7 @@ class Session:
         return _load(_USERNAME_KEY)
 
     def _set(self, result:client.AuthResult) -> None:
+        self.ended_message = None
         self.access_token = result.access_token
         self.refresh_token = result.refresh_token
         self.user = result.user
@@ -129,13 +139,24 @@ class Session:
         except client.ErpAuthError as e:
             if e.kind == 'invalid_session':
                 _log.info('stored ERP session is not valid anymore')
-                self.clear(keep_username=True)
+                self._end(e)
                 return False
             raise
         self._set(result)
-        if result.refresh_token != refresh_token:
-            _store(_REFRESH_TOKEN_KEY, result.refresh_token)
+        _store(_REFRESH_TOKEN_KEY, result.refresh_token) # rotated: the old token is dead within 30 seconds, so replace it at once
         return True
+
+    def _end(self, error:client.ErpAuthError) -> None:
+        """The session is over: forgets it, and keeps the ERP's reason (if it gave one) for the user."""
+        self.clear(keep_username=True)
+        if error.reason is not None:
+            self.ended_message = error.message
+
+    def revoke(self, reason:str) -> None:
+        """The ERP told over the realtime channel that this login session was ended (reason may be empty)."""
+        _log.info('ERP session revoked: %s', reason or 'no reason given')
+        self.clear(keep_username=True)
+        self.ended_message = client.revoked_text(reason)
 
     def clear(self, keep_username:bool = False) -> None:
         self.access_token = None
@@ -164,6 +185,11 @@ class Session:
         response = client.request(method, url, token, json=json, params=params, **extra)
         if response.status_code != 401:
             return response
+        reason = client.revoked_reason(_body(response))
+        if reason is not None:
+            # ended on purpose: renewing would fail too, the user has to log in again
+            self.revoke(reason)
+            raise client.ErpAuthError('invalid_session', client.revoked_text(reason), reason)
         self._renew_access_token(stale=token)
         renewed = self.access_token
         if renewed is None:
@@ -198,20 +224,20 @@ class Session:
             except client.ErpAuthError as e:
                 if e.kind == 'invalid_session':
                     _log.info('ERP session expired, logging out')
-                    self.clear(keep_username=True)
+                    self._end(e)
                 raise
             self._set(result)
-            if result.refresh_token != refresh_token and _load(_REFRESH_TOKEN_KEY):
+            if _load(_REFRESH_TOKEN_KEY): # "remember" is on: the stored token is dead since the rotation, replace it before anything else
                 _store(_REFRESH_TOKEN_KEY, result.refresh_token)
 
     def logout(self) -> None:
         """Ends the session of THIS Artisan on the ERP (best effort) and forgets everything stored locally.
 
-        The ERP gives back the roaster of this session and revokes this refresh token only: the user stays logged in on his other
+        The ERP gives back the roaster of this session and ends this login session only: the user stays logged in on his other
         devices (web, mobile) and on other PCs.
         """
         if self.access_token is not None:
-            client.logout(self.access_token, session_id=device.session_id(), refresh_token=self.refresh_token)
+            client.logout(self.access_token, session_id=device.session_id())
         self.clear()
 
 

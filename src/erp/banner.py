@@ -35,6 +35,12 @@ def lost_text(name:str, reason:str) -> str:
         'lease_lost': QApplication.translate('ERP', 'máy đã được phiên khác chiếm hoặc phiên của bạn đã hết hạn'),
         'force_released': QApplication.translate('ERP', 'quản trị viên đã ép nhả máy'),
         'session_expired': QApplication.translate('ERP', 'phiên đăng nhập ERP đã hết hạn'),
+        'session_kicked_self': QApplication.translate('ERP', 'phiên này đã bị đăng xuất từ một thiết bị khác của bạn'),
+        'session_kicked_admin': QApplication.translate('ERP', 'quản trị viên đã kết thúc phiên đăng nhập'),
+        'session_password_changed': QApplication.translate('ERP', 'mật khẩu đã được đổi, cần đăng nhập lại'),
+        'session_password_reset': QApplication.translate('ERP', 'quản trị viên đã đặt lại mật khẩu'),
+        'session_user_disabled': QApplication.translate('ERP', 'tài khoản đã bị khoá'),
+        'session_reuse_detected': QApplication.translate('ERP', 'phát hiện bất thường, đã đăng xuất để bảo vệ tài khoản'),
         'not_found': QApplication.translate('ERP', 'máy không còn hoạt động trong ERP'),
         'forbidden': QApplication.translate('ERP', 'tài khoản không còn quyền vận hành máy rang'),
     }.get(reason, QApplication.translate('ERP', 'ERP không còn xác nhận quyền giữ máy'))
