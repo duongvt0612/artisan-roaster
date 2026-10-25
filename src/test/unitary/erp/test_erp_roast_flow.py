@@ -3,6 +3,7 @@
 The dialogs and the message boxes are replaced by scripted doubles, the ERP API by a fake: nothing here shows a window or talks to a server."""
 
 import os
+import time
 from collections.abc import Generator
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -13,9 +14,10 @@ import pytest
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
+from PyQt6.QtCore import QTimer  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
-from erp import batch as erp_batch, roast_flow, roasters, rounds  # noqa: E402
+from erp import background, batch as erp_batch, roast_flow, roasters, rounds  # noqa: E402
 from erp.rounds import ActiveRound, FinishedRound, RoastCommand, RoundInput, StartedRound  # noqa: E402
 
 
@@ -140,6 +142,38 @@ def env(qapp:QApplication) -> Generator[Env, None, None]:  # noqa: ARG001
     roast_flow._reset_state()  # pylint: disable=protected-access
 
 
+def settle(qapp:QApplication, timeout:float = 3.0) -> None:
+    """Lets the answers of the calls made in the background arrive and be handled."""
+    end = time.monotonic() + timeout
+    while not background.idle() and time.monotonic() < end:
+        qapp.processEvents()
+        time.sleep(0.005)
+    qapp.processEvents()
+
+
+class Ticker:
+    """Counts the turns of the event loop: a frozen GUI would not have any while it waits for the ERP."""
+
+    def __init__(self) -> None:
+        self.ticks = 0
+        self.timer = QTimer()
+        self.timer.timeout.connect(self._tick)
+        self.timer.start(10)
+
+    def _tick(self) -> None:
+        self.ticks += 1
+
+    def stop(self) -> None:
+        self.timer.stop()
+
+
+def slowly(seconds:float, value:Any = None) -> Any:
+    def call(*_a:Any, **_kw:Any) -> Any:
+        time.sleep(seconds)
+        return value
+    return call
+
+
 def lease(ok:bool = True) -> MagicMock:
     m = MagicMock()
     m.is_ok = ok
@@ -231,6 +265,60 @@ class TestBeforeStart:
         assert start(FakeAw()) is False
         b = roast_flow.current_batch()
         assert b is not None and b.round_id == 'r9' and b.input_kg == 10.0
+
+
+class TestNoFreeze:
+    def test_checking_a_foreign_batch_keeps_the_event_loop_running(self, env:Env) -> None:
+        roast_flow._flow.foreign = active(mine=False)  # pylint: disable=protected-access
+        env.api.active_round.side_effect = slowly(0.4, None)
+        FakeStartDialog.script = [accepted_start()]
+        ticker = Ticker()
+        try:
+            assert start(FakeAw()) is True
+        finally:
+            ticker.stop()
+        assert ticker.ticks >= 10
+
+    def test_finding_out_whose_batch_blocks_the_roaster_keeps_the_event_loop_running(self, env:Env) -> None:
+        FakeStartDialog.script = [{'busy': True}]
+        env.api.active_round.side_effect = slowly(0.4, active(mine=False))
+        ticker = Ticker()
+        try:
+            assert start(FakeAw()) is False
+        finally:
+            ticker.stop()
+        assert ticker.ticks >= 10 and 'của người khác' in env.infos[0][0]
+
+    def test_giving_up_the_foreign_check_does_not_start_and_does_not_complain(self, env:Env) -> None:
+        roast_flow._flow.foreign = active(mine=False)  # pylint: disable=protected-access
+        with patch.object(roast_flow.background, 'call_with_wait', side_effect=background.Cancelled()):
+            assert start(FakeAw()) is False
+        assert env.infos == [] and FakeStartDialog.created == []
+
+    def test_giving_up_finding_out_who_blocks_the_roaster_does_not_complain(self, env:Env) -> None:
+        FakeStartDialog.script = [{'busy': True}]
+        with patch.object(roast_flow.background, 'call_with_wait', side_effect=background.Cancelled()):
+            assert start(FakeAw()) is False
+        assert env.infos == []
+
+    def test_cancelling_a_batch_keeps_the_event_loop_running(self, env:Env) -> None:
+        roast_flow._flow.batch = a_batch()  # pylint: disable=protected-access
+        env.choices, env.reasons = [1], ['rang hỏng']
+        env.api.cancel_round.side_effect = slowly(0.4)
+        ticker = Ticker()
+        try:
+            assert roast_flow.before_reset(FakeAw()) is True  # type:ignore[arg-type]
+        finally:
+            ticker.stop()
+        assert ticker.ticks >= 10 and roast_flow.current_batch() is None
+
+    def test_the_wait_for_a_cancellation_cannot_be_given_up(self, env:Env) -> None:
+        # a cancellation that may or may not have arrived must not be abandoned: Artisan and the ERP would disagree
+        roast_flow._flow.batch = a_batch()  # pylint: disable=protected-access
+        env.choices, env.reasons = [1], ['x']
+        with patch.object(roast_flow.background, 'call_with_wait', wraps=background.call_with_wait) as call:
+            roast_flow.before_reset(FakeAw())  # type:ignore[arg-type]
+        assert call.call_args.kwargs.get('cancellable', False) is False
 
 
 class TestFinish:
@@ -344,53 +432,87 @@ class TestReset:
 
 
 class TestResume:
-    def test_nothing_running_nothing_asked(self, env:Env) -> None:
+    def test_nothing_running_nothing_asked(self, env:Env, qapp:QApplication) -> None:
         roast_flow.resume_if_any(FakeAw(), lease())  # type:ignore[arg-type]
+        settle(qapp)
         assert env.asked == [] and roast_flow.current_batch() is None
         env.api.active_round.assert_called_once_with('eq1')
 
-    def test_without_a_lease_nothing_is_asked(self, env:Env) -> None:
+    def test_without_a_lease_nothing_is_asked(self, env:Env, qapp:QApplication) -> None:
         roast_flow.resume_if_any(FakeAw(), None)  # type:ignore[arg-type]
+        settle(qapp)
         env.api.active_round.assert_not_called()
 
-    def test_an_erp_failure_is_not_fatal(self, env:Env) -> None:  # noqa: ARG002
+    def test_an_erp_failure_is_not_fatal(self, env:Env, qapp:QApplication) -> None:  
         env.api.active_round.side_effect = roasters.RoasterUnavailable('network', 'down')
         roast_flow.resume_if_any(FakeAw(), lease())  # type:ignore[arg-type]
+        settle(qapp)
         assert roast_flow.current_batch() is None
 
-    def test_somebody_elses_batch_is_reported(self, env:Env) -> None:
+    def test_somebody_elses_batch_is_reported(self, env:Env, qapp:QApplication) -> None:
         env.api.active_round.return_value = active(mine=False)
         roast_flow.resume_if_any(FakeAw(), lease())  # type:ignore[arg-type]
+        settle(qapp)
         assert 'của người khác' in env.infos[0][0] and roast_flow.current_batch() is None
 
-    def test_my_batch_can_be_finished_right_away(self, env:Env) -> None:
+    def test_my_batch_can_be_finished_right_away(self, env:Env, qapp:QApplication) -> None:
         env.api.active_round.return_value = active()
         env.choices = [0]
         FakeFinishDialog.script = [{'finished': FinishedRound('r9', 2, 9.0, 8.5, 10.0, False, 12.0)}]
         roast_flow.resume_if_any(FakeAw(), lease())  # type:ignore[arg-type]
+        settle(qapp)
         assert roast_flow.current_batch() is None and FakeFinishDialog.created[0].batch.round_id == 'r9'
 
-    def test_my_batch_can_wait(self, env:Env) -> None:
+    def test_my_batch_can_wait(self, env:Env, qapp:QApplication) -> None:
         env.api.active_round.return_value = active()
         env.choices = [1]
         roast_flow.resume_if_any(FakeAw(), lease())  # type:ignore[arg-type]
+        settle(qapp)
         b = roast_flow.current_batch()
         assert b is not None and b.round_id == 'r9' and b.equipment_id == 'eq1' and FakeFinishDialog.created == []
         assert 'bắt đầu' in env.asked[0][0] or 'chưa kết thúc' in env.asked[0][0]
 
-    def test_my_batch_can_be_cancelled(self, env:Env) -> None:
+    def test_my_batch_can_be_cancelled(self, env:Env, qapp:QApplication) -> None:
         env.api.active_round.return_value = active()
         env.choices, env.reasons = [2], ['Artisan sập, rang lại']
         roast_flow.resume_if_any(FakeAw(), lease())  # type:ignore[arg-type]
+        settle(qapp)
         env.api.cancel_round.assert_called_once_with('r9', reason='Artisan sập, rang lại')
         assert roast_flow.current_batch() is None
 
-    def test_a_cancellation_without_a_reason_keeps_the_batch(self, env:Env) -> None:
+    def test_a_cancellation_without_a_reason_keeps_the_batch(self, env:Env, qapp:QApplication) -> None:
         env.api.active_round.return_value = active()
         env.choices, env.reasons = [2], [None]
         roast_flow.resume_if_any(FakeAw(), lease())  # type:ignore[arg-type]
+        settle(qapp)
         env.api.cancel_round.assert_not_called()
         assert roast_flow.current_batch() is not None
+
+
+    def test_it_does_not_wait_for_the_erp(self, env:Env, qapp:QApplication) -> None:
+        env.api.active_round.side_effect = slowly(0.4, active(mine=False))
+        started_at = time.monotonic()
+        roast_flow.resume_if_any(FakeAw(), lease())  # type:ignore[arg-type]
+        assert time.monotonic() - started_at < 0.2 and env.infos == []  # the main window is usable at once
+        settle(qapp)
+        assert 'của người khác' in env.infos[0][0]  # and the answer is acted on when it arrives
+
+    def test_a_batch_started_meanwhile_is_left_alone(self, env:Env, qapp:QApplication) -> None:
+        env.api.active_round.side_effect = slowly(0.2, active(mine=True))
+        roast_flow.resume_if_any(FakeAw(), lease())  # type:ignore[arg-type]
+        roast_flow._flow.batch = a_batch()  # pylint: disable=protected-access  # START was pressed before the ERP answered
+        settle(qapp)
+        assert env.asked == [] and env.infos == []
+        b = roast_flow.current_batch()
+        assert b is not None and b.round_id == 'r1'
+
+    def test_a_roaster_given_up_meanwhile_is_not_asked_about(self, env:Env, qapp:QApplication) -> None:
+        lse = lease()
+        env.api.active_round.side_effect = slowly(0.2, active(mine=False))
+        roast_flow.resume_if_any(FakeAw(), lse)  # type:ignore[arg-type]
+        lse.is_ok = False  # the lease was lost (or released) while the ERP was thinking
+        settle(qapp)
+        assert env.infos == [] and env.asked == []
 
 
 class TestQuit:

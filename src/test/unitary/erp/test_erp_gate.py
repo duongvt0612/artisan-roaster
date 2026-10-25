@@ -4,6 +4,7 @@ from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
+from PyQt6.QtWidgets import QApplication
 
 from erp import client, config, gate
 
@@ -624,3 +625,81 @@ class TestServerConfiguration:
         manager.state = LeaseState.HELD
         manager.roaster_name = 'Máy Rang Nhỏ (ROAST-01)'
         assert gate.window_title_suffix() == ' [STAGING] · Máy rang: Máy Rang Nhỏ (ROAST-01)'
+
+
+# ---- no freezing while the ERP answers ----------------------------------------------------------------------------------------
+
+class _Ticker:
+    """Counts the turns of the event loop: a frozen GUI would not have any while it waits for the ERP."""
+
+    def __init__(self) -> None:
+        from PyQt6.QtCore import QTimer
+        self.ticks = 0
+        self.timer = QTimer()
+        self.timer.timeout.connect(self._tick)
+        self.timer.start(10)
+
+    def _tick(self) -> None:
+        self.ticks += 1
+
+    def stop(self) -> None:
+        self.timer.stop()
+
+
+@pytest.fixture(scope='module')
+def qapp() -> Generator[QApplication, None, None]:
+    import os
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    yield QApplication.instance() or QApplication([])  # type:ignore[misc]
+
+
+class TestNoFreeze:
+    def test_checking_the_stored_session_keeps_the_event_loop_running(self, qapp:QApplication, aw:MagicMock, session:MagicMock) -> None:  # noqa: ARG002
+        import time
+        session.restore.side_effect = lambda: (time.sleep(0.4), True)[1]
+        ticker = _Ticker()
+        try:
+            assert gate.require_login(aw) is True
+        finally:
+            ticker.stop()
+        assert ticker.ticks >= 10
+
+    def test_giving_the_roaster_back_keeps_the_event_loop_running(self, qapp:QApplication, aw:MagicMock, roaster_env:SimpleNamespace) -> None:  # noqa: ARG002
+        import time
+        FakeDialog.script = [{'accept': True, 'claim': _claim(), 'roaster': _roaster()}]
+        gate.require_roaster(aw)
+        stopped:list[bool] = []
+        roaster_env.manager_cls.return_value.stop.side_effect = lambda **_k: (time.sleep(0.4), stopped.append(True))
+        ticker = _Ticker()
+        try:
+            gate.release_roaster()
+        finally:
+            ticker.stop()
+        assert ticker.ticks >= 10 and stopped == [True]
+
+    def test_logging_out_keeps_the_event_loop_running(self, qapp:QApplication, aw:MagicMock, session:MagicMock) -> None:  # noqa: ARG002
+        import time
+        session.logout.side_effect = lambda: time.sleep(0.4)
+        ticker = _Ticker()
+        try:
+            with patch.object(gate, 'confirm_logout', return_value=True):
+                assert gate.logout(aw) is True
+        finally:
+            ticker.stop()
+        assert ticker.ticks >= 10
+        session.logout.assert_called_once()
+
+    def test_a_stuck_logout_still_forgets_the_session_here(self, qapp:QApplication, aw:MagicMock, session:MagicMock) -> None:  # noqa: ARG002
+        import time
+        session.logout.side_effect = lambda: time.sleep(1.0)
+        started = time.monotonic()
+        with patch.object(gate, 'confirm_logout', return_value=True), patch.object(gate, 'LOGOUT_WAIT_SECONDS', 0.1):
+            assert gate.logout(aw) is True
+        assert time.monotonic() - started < 0.8
+        session.clear.assert_called()  # the stored login must not survive because the ERP did not answer
+
+    def test_a_failing_logout_still_forgets_the_session_here(self, qapp:QApplication, aw:MagicMock, session:MagicMock) -> None:  # noqa: ARG002
+        session.logout.side_effect = RuntimeError('boom')
+        with patch.object(gate, 'confirm_logout', return_value=True):
+            assert gate.logout(aw) is True
+        session.clear.assert_called()

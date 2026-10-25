@@ -20,13 +20,12 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import logging
-import threading
 from typing import Any, Final, TYPE_CHECKING
 
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
-from erp import attachments, banner as erp_banner, config, device, realtime as erp_realtime, roast_flow
+from erp import attachments, background, banner as erp_banner, config, device, realtime as erp_realtime, roast_flow
 from erp.attachments import Job, UploadQueue, Uploader
 from erp.client import ErpAuthError
 from erp.lease import LeaseManager, LeaseState
@@ -99,7 +98,8 @@ def require_login(aw:'ApplicationWindow') -> bool:
         return False
     while True:
         try:
-            if session.restore():
+            # the ERP may take a while (or not answer): the event loop keeps running meanwhile
+            if background.call_with_wait(None, QApplication.translate('ERP', 'Đang kiểm tra phiên đăng nhập ERP…'), session.restore):
                 _resume_uploads()
                 return True
             break
@@ -124,14 +124,26 @@ def logout(aw:'ApplicationWindow') -> bool:
         return False
     _state.quit_confirmed = True # the quit that follows must not ask again
     release_roaster() # give the roaster back first: stops our heartbeat thread, then the ERP logout (which also releases this session's roaster) cannot race it
-    session.logout()
+    _end_session(aw)
     return True
+
+
+def _end_session(aw:'ApplicationWindow') -> None:
+    """Tells the ERP (best effort, bounded wait, the event loop keeps running) and forgets the login here whatever the ERP answers."""
+    try:
+        background.call_with_wait(aw, QApplication.translate('ERP', 'Đang đăng xuất khỏi ERP…'), session.logout, timeout=LOGOUT_WAIT_SECONDS)
+    except background.Cancelled:
+        _log.info('the ERP did not confirm the logout in time')
+    except Exception as e: # pylint: disable=broad-except
+        _log.info('ERP logout failed: %s', type(e).__name__)
+    session.clear() # idempotent: the stored refresh token must not outlive a logout the ERP did not answer
 
 
 # ---- the roaster this session holds ------------------------------------------------------------------------------------------
 
 PERM_FORCE_RELEASE: Final[str] = 'roasters:force-release'
 RELEASE_WAIT_SECONDS: Final[float] = 3.0 # how long quitting Artisan waits for the ERP to confirm the release
+LOGOUT_WAIT_SECONDS: Final[float] = 5.0  # and for the ERP to confirm the logout
 
 
 class _Bridge(QObject):
@@ -434,13 +446,24 @@ def release_roaster(timeout:float = RELEASE_WAIT_SECONDS) -> None:
     """Gives the roaster back (if still ours) and stops the background work. Safe to call twice; never hangs Artisan's quit for long."""
     manager = _state.manager
     _state.manager = None
-    _stop_realtime()
+    realtime = _state.realtime
+    _state.realtime = None
     _stop_uploads() # files still queued stay on disk and are sent at the next start
-    if manager is None:
+    if manager is None and realtime is None:
         return
-    worker = threading.Thread(target=manager.stop, name='erp-lease-release', daemon=True)
-    worker.start()
-    worker.join(timeout)
+
+    def work() -> None:
+        if realtime is not None:
+            realtime.stop() # waits for its thread
+        if manager is not None:
+            manager.stop() # the last heartbeat, then the release call to the ERP
+
+    try:
+        background.call_with_wait(_state.aw, QApplication.translate('ERP', 'Đang trả máy rang cho ERP…'), work, timeout=timeout)
+    except background.Cancelled:
+        _log.info('the ERP did not confirm the release in time: the lease expires on its own')
+    except Exception as e: # pylint: disable=broad-except
+        _log.info('could not release the roaster: %s', type(e).__name__)
 
 
 # ---- the roast batch: what Artisan calls -------------------------------------------------------------------------------------

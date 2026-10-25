@@ -51,7 +51,7 @@ def _logged_in(remember:bool = False) -> Session:
 
 def test_sends_the_bearer_token_and_returns_the_response() -> None:
     s = _logged_in()
-    with patch('erp.client.requests.request', return_value=_response(200, {'ok': True})) as req:
+    with patch('erp.client._http.request', return_value=_response(200, {'ok': True})) as req:
         r = s.authed_request('GET', 'http://erp/api/roasters', params={'sessionId': 's1'})
     assert r.status_code == 200
     args, kwargs = req.call_args
@@ -64,7 +64,7 @@ def test_sends_the_bearer_token_and_returns_the_response() -> None:
 def test_refreshes_once_on_401_and_retries_with_the_new_token() -> None:
     s = _logged_in(remember=False)  # NOT remembered: the refresh token must still be usable from memory
     replies = [_response(401), _response(200, {'ok': True})]
-    with patch('erp.client.requests.request', side_effect=replies) as req, \
+    with patch('erp.client._http.request', side_effect=replies) as req, \
          patch('erp.session.client.refresh', return_value=client.AuthResult('a2', 'r1', USER)) as refresh:
         r = s.authed_request('POST', 'http://erp/api/x', json={'a': 1})
     assert r.status_code == 200
@@ -78,7 +78,7 @@ def test_refreshes_once_on_401_and_retries_with_the_new_token() -> None:
 
 def test_rotated_refresh_token_replaces_the_remembered_one_at_once(kr:FakeKeyring) -> None:
     s = _logged_in(remember=True)
-    with patch('erp.client.requests.request', side_effect=[_response(401), _response(200, {})]), \
+    with patch('erp.client._http.request', side_effect=[_response(401), _response(200, {})]), \
          patch('erp.session.client.refresh', return_value=client.AuthResult('a2', 'r2', USER)):
         s.authed_request('GET', 'http://erp/api/x')
     assert s.refresh_token == 'r2'
@@ -87,7 +87,7 @@ def test_rotated_refresh_token_replaces_the_remembered_one_at_once(kr:FakeKeyrin
 
 def test_rotated_refresh_token_without_remember_stays_out_of_the_keyring(kr:FakeKeyring) -> None:
     s = _logged_in(remember=False)
-    with patch('erp.client.requests.request', side_effect=[_response(401), _response(200, {})]), \
+    with patch('erp.client._http.request', side_effect=[_response(401), _response(200, {})]), \
          patch('erp.session.client.refresh', return_value=client.AuthResult('a2', 'r2', USER)):
         s.authed_request('GET', 'http://erp/api/x')
     assert s.refresh_token == 'r2'
@@ -97,7 +97,7 @@ def test_rotated_refresh_token_without_remember_stays_out_of_the_keyring(kr:Fake
 def test_session_revoked_is_not_refreshed_but_ends_the_session() -> None:
     s = _logged_in(remember=True)
     body = {'success': False, 'errors': ['SESSION_REVOKED', 'kicked_admin'], 'errorMessages': ['Phiên đăng nhập này đã bị quản trị viên kết thúc.'], 'data': None}
-    with patch('erp.client.requests.request', return_value=_response(401, body)) as req, \
+    with patch('erp.client._http.request', return_value=_response(401, body)) as req, \
          patch('erp.session.client.refresh') as refresh, \
          pytest.raises(client.ErpAuthError) as exc:
         s.authed_request('GET', 'http://erp/api/x')
@@ -119,7 +119,7 @@ def test_revoke_forgets_the_session_and_remembers_why(kr:FakeKeyring) -> None:
 
 def test_a_second_401_after_refresh_is_returned_not_looped() -> None:
     s = _logged_in()
-    with patch('erp.client.requests.request', side_effect=[_response(401), _response(401)]) as req, \
+    with patch('erp.client._http.request', side_effect=[_response(401), _response(401)]) as req, \
          patch('erp.session.client.refresh', return_value=client.AuthResult('a2', 'r1', USER)):
         r = s.authed_request('GET', 'http://erp/api/x')
     assert r.status_code == 401
@@ -128,7 +128,7 @@ def test_a_second_401_after_refresh_is_returned_not_looped() -> None:
 
 def test_dead_refresh_token_logs_out_and_raises() -> None:
     s = _logged_in(remember=True)
-    with patch('erp.client.requests.request', return_value=_response(401)), \
+    with patch('erp.client._http.request', return_value=_response(401)), \
          patch('erp.session.client.refresh', side_effect=client.ErpAuthError('invalid_session', 'expired')), \
          pytest.raises(client.ErpAuthError) as exc:
         s.authed_request('GET', 'http://erp/api/x')
@@ -138,7 +138,7 @@ def test_dead_refresh_token_logs_out_and_raises() -> None:
 
 def test_refresh_hitting_the_network_error_keeps_the_session() -> None:
     s = _logged_in()
-    with patch('erp.client.requests.request', return_value=_response(401)), \
+    with patch('erp.client._http.request', return_value=_response(401)), \
          patch('erp.session.client.refresh', side_effect=client.ErpAuthError('network', 'down')), \
          pytest.raises(client.ErpAuthError) as exc:
         s.authed_request('GET', 'http://erp/api/x')
@@ -149,14 +149,14 @@ def test_refresh_hitting_the_network_error_keeps_the_session() -> None:
 @pytest.mark.parametrize('exc_type', [requests.exceptions.ConnectionError, requests.exceptions.Timeout])
 def test_network_errors_are_reported_as_such(exc_type:type[Exception]) -> None:
     s = _logged_in()
-    with patch('erp.client.requests.request', side_effect=exc_type('boom')), \
+    with patch('erp.client._http.request', side_effect=exc_type('boom')), \
          pytest.raises(client.ErpAuthError) as exc:
         s.authed_request('GET', 'http://erp/api/x')
     assert exc.value.kind == 'network'
 
 
 def test_not_logged_in_raises_without_touching_the_network() -> None:
-    with patch('erp.client.requests.request') as req, \
+    with patch('erp.client._http.request') as req, \
          pytest.raises(client.ErpAuthError) as exc:
         Session().authed_request('GET', 'http://erp/api/x')
     assert exc.value.kind == 'invalid_session'
@@ -184,7 +184,7 @@ def test_concurrent_401s_refresh_only_once() -> None:
         return client.AuthResult('a2', 'r1', USER)
 
     results:list[int] = []
-    with patch('erp.client.requests.request', side_effect=fake_request), \
+    with patch('erp.client._http.request', side_effect=fake_request), \
          patch('erp.session.client.refresh', side_effect=slow_refresh) as refresh:
         threads = [threading.Thread(target=lambda: results.append(s.authed_request('GET', 'http://erp/api/x').status_code)) for _ in range(2)]
         for t in threads:
@@ -266,7 +266,7 @@ class TestMultipart:
         s = _logged_in()
         parts = {'file': ('a.pdf', b'%PDF-', 'application/pdf')}
         with patch('erp.session.client.refresh', return_value=client.AuthResult('a2', 'r1', USER)), \
-             patch('erp.client.requests.request', side_effect=[_response(401), _response(200, {'ok': True})]) as req:
+             patch('erp.client._http.request', side_effect=[_response(401), _response(200, {'ok': True})]) as req:
             r = s.authed_request('POST', 'http://erp/api/artisan/rounds/r1/files', data={'kind': 'pdf'}, files=parts)
         assert r.status_code == 200
         assert req.call_count == 2
@@ -277,7 +277,7 @@ class TestMultipart:
 
     def test_plain_requests_keep_their_shape_and_timeout(self) -> None:
         s = _logged_in()
-        with patch('erp.client.requests.request', return_value=_response(200)) as req:
+        with patch('erp.client._http.request', return_value=_response(200)) as req:
             s.authed_request('GET', 'http://erp/api/roasters', params={'a': 1})
         kwargs = req.call_args.kwargs
         assert kwargs['files'] is None and kwargs['data'] is None and kwargs['timeout'] == client.config.timeout

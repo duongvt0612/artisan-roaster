@@ -21,6 +21,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import functools
 import logging
 import platform
 import socket
@@ -72,6 +73,7 @@ def session_id() -> str:
     return _SESSION_ID
 
 
+@functools.cache # goes into the headers of every request to the ERP; asking the system each time can be slow (name resolution)
 def device_name() -> str:
     name = ''
     for source in (socket.gethostname, platform.node):

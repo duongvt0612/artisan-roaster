@@ -26,12 +26,12 @@
 
 import logging
 from collections.abc import Callable
-from typing import Any, Final, TYPE_CHECKING
+from typing import Any, Final, TYPE_CHECKING, cast
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication, QInputDialog, QMessageBox
 
-from erp import batch as erp_batch, finish_dialog, roast_files, roasters, rounds, start_dialog
+from erp import background, batch as erp_batch, finish_dialog, roast_files, roasters, rounds, start_dialog
 from erp.attachments import UploadQueue, Uploader
 from erp.batch import Batch
 from erp.lease import LeaseManager
@@ -241,10 +241,18 @@ def recording_started(aw:'ApplicationWindow') -> None:
         _flow.linked_epoch = int(getattr(aw.qmc, 'roastepoch', 0) or 0) or None
 
 
+def _ask_active_round(aw:'ApplicationWindow', roaster_id:str) -> ActiveRound|None:
+    """The batch running on the roaster, asked of the ERP while the event loop keeps running (the operator can give up waiting: Cancelled)."""
+    return cast('ActiveRound|None', background.call_with_wait(
+        aw, QApplication.translate('ERP', 'Đang kiểm tra máy rang với ERP…'), lambda: rounds.active_round(roaster_id), cancellable=True))
+
+
 def _recheck_foreign(aw:'ApplicationWindow', lease:LeaseManager) -> bool:
     """Somebody else's batch blocked the roaster earlier: asks the ERP whether it still does. True if START may go on."""
     try:
-        active = rounds.active_round(lease.roaster_id)
+        active = _ask_active_round(aw, lease.roaster_id)
+    except background.Cancelled:
+        return False # he did not want to wait: START asks again next time
     except roasters.RoasterError as e:
         _info(aw, QApplication.translate('ERP', 'Không kiểm tra được máy rang với ERP.'), e.message)
         return False
@@ -258,7 +266,9 @@ def _recheck_foreign(aw:'ApplicationWindow', lease:LeaseManager) -> bool:
 def _handle_running_batch(aw:'ApplicationWindow', lease:LeaseManager) -> None:
     """START was refused because the roaster has a batch (ROASTER_BUSY): finds out whose and what to do."""
     try:
-        active = rounds.active_round(lease.roaster_id)
+        active = _ask_active_round(aw, lease.roaster_id)
+    except background.Cancelled:
+        return
     except roasters.RoasterError as e:
         _info(aw, QApplication.translate('ERP', 'Máy rang đang có một mẻ chưa kết thúc.'), e.message)
         return
@@ -311,15 +321,24 @@ def resume_if_any(aw:'ApplicationWindow', lease:LeaseManager|None) -> None:
     """Right after the roaster was chosen: a batch left running by a crash (or by the ERP web) is offered for finishing or cancelling."""
     if lease is None:
         return
-    try:
-        active = rounds.active_round(lease.roaster_id)
-    except roasters.RoasterError as e:
-        _log.info('could not ask the ERP for the running batch: %s', e.message) # START asks again, the ERP refuses a second batch anyway
-        return
-    if active is None:
-        _flow.foreign = None
-        return
-    _handle_active(aw, active, lease)
+    roaster_id = lease.roaster_id
+
+    def answered(active:Any, error:BaseException|None) -> None:
+        if error is not None:
+            if isinstance(error, roasters.RoasterError):
+                _log.info('could not ask the ERP for the running batch: %s', error.message) # START asks again, the ERP refuses a second batch anyway
+            else:
+                _log.error('asking the ERP for the running batch failed: %r', error)
+            return
+        if _flow.batch is not None or not lease.is_ok:
+            return # the operator did not wait for the answer (he started a batch, or the roaster is not ours any more): it is stale
+        if active is None:
+            _flow.foreign = None
+            return
+        _handle_active(aw, active, lease)
+
+    # not awaited: the main window is usable while the ERP answers, the question is asked when the answer arrives
+    background.run_in_thread(lambda: rounds.active_round(roaster_id), answered, name='erp-active-round')
 
 
 # ---- finish / cancel --------------------------------------------------------------------------------------------------------
@@ -420,7 +439,8 @@ def roast_stopped(aw:'ApplicationWindow') -> None:
 
 def _cancel_on_erp(aw:'ApplicationWindow', round_id:str, reason:str) -> bool:
     try:
-        rounds.cancel_round(round_id, reason=reason)
+        # not to be given up: Artisan must know whether the ERP cancelled the batch before it resets
+        background.call_with_wait(aw, QApplication.translate('ERP', 'Đang huỷ mẻ trên ERP…'), lambda: rounds.cancel_round(round_id, reason=reason))
         return True
     except rounds.RoundNotRunning:
         return True # it is over anyway

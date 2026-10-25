@@ -29,12 +29,21 @@ from dataclasses import dataclass
 from typing import Any, Final, Literal
 
 import requests
+from requests.adapters import HTTPAdapter
 
 from erp import config, device
 
 _log: Final[logging.Logger] = logging.getLogger(__name__)
 
 ErrorKind = Literal['invalid_credentials', 'disabled', 'invalid_session', 'rate_limited', 'network', 'server']
+
+
+# one session for every call: the connection (TCP + TLS) is kept alive and reused, the heartbeat (every 10 s) and the search of the
+# production commands (every key) would otherwise open a new one each time. No cookies are involved: the ERP only uses Bearer tokens.
+_POOL_SIZE:Final[int] = 8 # parallel calls: heartbeat, search, finish, upload, realtime token renewal
+_http:Final[requests.Session] = requests.Session()
+for _prefix in ('https://', 'http://'):
+    _http.mount(_prefix, HTTPAdapter(pool_connections=4, pool_maxsize=_POOL_SIZE))
 
 
 CLIENT_TYPE:Final[str] = 'artisan'
@@ -116,7 +125,7 @@ def _is_disabled_message(message:str) -> bool:
 
 def _post(url:str, payload:dict[str, Any], headers:dict[str, str]|None = None) -> requests.Response:
     try:
-        return requests.post(url, json=payload, headers={**client_headers(), **(headers or {})}, timeout=config.timeout)
+        return _http.post(url, json=payload, headers={**client_headers(), **(headers or {})}, timeout=config.timeout)
     except requests.exceptions.RequestException as e:
         _log.info('ERP request failed: %s', type(e).__name__)
         raise ErpAuthError('network', str(e)) from e
@@ -149,7 +158,7 @@ def request(method:str, url:str, token:str, json:Any = None, params:dict[str, An
     `data` + `files` make a multipart upload: `files` values must be bytes tuples (name, content, type), not open files, so that the
     request can be sent again after the access token was renewed."""
     try:
-        return requests.request(method, url, json=json, params=params, data=data, files=files, headers={**client_headers(), 'Authorization': f'Bearer {token}'},
+        return _http.request(method, url, json=json, params=params, data=data, files=files, headers={**client_headers(), 'Authorization': f'Bearer {token}'},
                                 timeout=config.upload_timeout if files else config.timeout)
     except requests.exceptions.RequestException as e:
         _log.info('ERP request failed: %s', type(e).__name__)

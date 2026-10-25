@@ -67,6 +67,24 @@ def test_device_name_is_trimmed_and_never_empty() -> None:
     assert name == name.strip()
 
 
+def test_device_name_is_asked_of_the_system_only_once(monkeypatch:pytest.MonkeyPatch) -> None:
+    # it goes into the headers of every request to the ERP
+    calls:list[int] = []
+
+    def hostname() -> str:
+        calls.append(1)
+        return 'Máy-rang-1'
+
+    monkeypatch.setattr(device.socket, 'gethostname', hostname)
+    device.device_name.cache_clear()
+    try:
+        assert device.device_name() == 'Máy-rang-1'
+        assert device.device_name() == 'Máy-rang-1'
+        assert len(calls) == 1
+    finally:
+        device.device_name.cache_clear()
+
+
 def test_last_roaster_roundtrip() -> None:
     store = MemStore()
     assert device.last_roaster_id(store) is None
