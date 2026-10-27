@@ -224,7 +224,7 @@ def before_start(aw:'ApplicationWindow', lease:LeaseManager|None, *, capacity_kg
         return False
     if not accepted or started is None or command is None:
         return False
-    input_kg = round(sum(kg for _inp, kg in lines), 3)
+    input_kg = round(sum(kg for _inp, kg in lines), 4)
     _flow.batch = erp_batch.from_started(started, command, input_kg, lease.roaster_id)
     _flow.foreign = None
     _flow.linked = None

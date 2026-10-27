@@ -42,6 +42,21 @@ COMMAND = {
 }
 
 
+class TestFineInputs:
+    def test_parses_the_whole_pack_only_flag_per_input(self, sess:Any) -> None:
+        command = dict(COMMAND, inputs=[
+            {'inventoryId': 'film', 'code': 'FILM', 'name': 'Màng lọc', 'unit': 'kg', 'availableKg': 12.4996, 'wholePackOnly': True},
+            {'inventoryId': 'g1', 'code': 'NX-A', 'name': 'Nhân A', 'unit': 'kg', 'availableKg': 55.5}])
+        sess.authed_request.return_value = _resp(200, _ok([command]))
+        film, bean = rounds.search_commands('x')[0].inputs
+        assert film.whole_pack_only is True and bean.whole_pack_only is False
+
+    def test_active_round_keeps_four_decimals_of_the_input_total(self) -> None:
+        inputs = (rounds.RoundInput('film', 'FILM', 'Màng lọc', 'kg', 0.0004, True), rounds.RoundInput('g1', 'NX-A', 'Nhân A', 'kg', 12))
+        active = rounds.ActiveRound('r1', 1, 'c1', 'LS-1', 'normal', 1, 'Arabica', 'kg', 120, 15, 5, None, 'u1', 'A', True, True, inputs)
+        assert active.input_kg == 12.0004
+
+
 class TestSearch:
     def test_parses_what_the_operator_must_verify(self, sess:Any) -> None:
         sess.authed_request.return_value = _resp(200, _ok([COMMAND]))
