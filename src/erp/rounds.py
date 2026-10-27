@@ -75,6 +75,8 @@ class RoundInput:
     name:str
     unit:str
     kg:float
+    # Green coffee of a 'whole pack only' item (film, ...): used down to 0.0001 kg, so the dialog types 4 decimals for it.
+    whole_pack_only:bool = False
 
 
 @dataclass(frozen=True)
@@ -154,7 +156,7 @@ class ActiveRound:
 
     @property
     def input_kg(self) -> float:
-        return round(sum(i.kg for i in self.inputs), 3)
+        return round(sum(i.kg for i in self.inputs), 4)
 
 
 def _num(value:Any) -> float:
@@ -178,7 +180,8 @@ def _dt(value:Any) -> datetime|None:
 
 
 def _input(item:Any, key:str) -> RoundInput:
-    return RoundInput(_text(item['inventoryId']), _text(item.get('code')), _text(item.get('name')), _text(item.get('unit')), _num(item.get(key)))
+    return RoundInput(_text(item['inventoryId']), _text(item.get('code')), _text(item.get('name')), _text(item.get('unit')), _num(item.get(key)),
+                      item.get('wholePackOnly') is True)
 
 
 def _command(item:Any) -> RoastCommand|None:

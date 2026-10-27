@@ -59,7 +59,7 @@ class Batch:
 def from_started(started:StartedRound, command:RoastCommand, input_kg:float, equipment_id:str) -> Batch:
     return Batch(
         round_id=started.round_id, round_number=started.round_number, command_id=started.command_id, command_code=command.code,
-        kind=command.kind, output_name=command.output_name, output_unit=command.output_unit, input_kg=round(input_kg, 3),
+        kind=command.kind, output_name=command.output_name, output_unit=command.output_unit, input_kg=round(input_kg, 4),
         expected_output_kg=started.expected_output_kg, tolerance_percent=started.tolerance_percent,
         started_at=started.started_at.isoformat() if started.started_at is not None else '', equipment_id=equipment_id)
 

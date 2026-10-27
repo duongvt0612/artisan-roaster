@@ -44,12 +44,15 @@ _log: Final[logging.Logger] = logging.getLogger(__name__)
 SEARCH_DEBOUNCE_MS: Final[int] = 250
 SEARCH_LIMIT: Final[int] = 20
 MAX_LISTED_ORDERS: Final[int] = 2
+KG_DECIMALS: Final[int] = 4  # what is shown / summed: items that are used down to 0.0001 kg (film, ...) need 4
+SPIN_DECIMALS: Final[int] = 3  # an ordinary green coffee is typed with 3 decimals
+FINE_SPIN_DECIMALS: Final[int] = 4  # a 'whole pack only' item is typed with 4
 
 
 def format_kg(value:float) -> str:
-    """'120', '80,5', '0,125': up to 3 decimals without trailing zeros, in the decimal separator of the user's locale."""
+    """'120', '80,5', '0,0004': up to 4 decimals without trailing zeros, in the decimal separator of the user's locale."""
     locale = QLocale()
-    text = locale.toString(float(round(value, 3)), 'f', 3)
+    text = locale.toString(float(round(value, KG_DECIMALS)), 'f', KG_DECIMALS)
     sep = locale.decimalPoint()
     if sep in text:
         text = text.rstrip('0').rstrip(sep)
@@ -429,9 +432,9 @@ class StartRoundDialog(ArtisanDialog):
         left.addWidget(name)
         left.addWidget(hint)
         spin = QDoubleSpinBox()
-        spin.setDecimals(3)
+        spin.setDecimals(FINE_SPIN_DECIMALS if inp.whole_pack_only else SPIN_DECIMALS)
         spin.setRange(0.0, max(inp.kg, 0.0))
-        spin.setSingleStep(0.5)
+        spin.setSingleStep(0.0001 if inp.whole_pack_only else 0.5)
         spin.setSuffix(' kg')
         spin.setValue(min(value, inp.kg))
         spin.setMinimumWidth(150)
@@ -445,7 +448,7 @@ class StartRoundDialog(ArtisanDialog):
         return w
 
     def total_kg(self) -> float:
-        return round(sum(spin.value() for _, spin in self._spins), 3)
+        return round(sum(spin.value() for _, spin in self._spins), KG_DECIMALS)
 
     def _update_total(self) -> None:
         total = self.total_kg()
