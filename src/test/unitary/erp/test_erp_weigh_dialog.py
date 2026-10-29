@@ -64,7 +64,7 @@ def _wait(qapp:QApplication, cond:Any, timeout:float = 3.0) -> None:
 def make(qapp:QApplication, api:FakeApi) -> weigh_dialog.WeighPendingDialog:
     d = weigh_dialog.WeighPendingDialog(None, MagicMock(), api=api)
     d.show()
-    _wait(qapp, lambda: api.list_calls > 0 and d.statusLabel.text() != '')
+    _wait(qapp, lambda: d.remaining is not None)
     return d
 
 
@@ -187,6 +187,28 @@ class TestWeighing:
         d._update_buttons()  # pylint: disable=protected-access
         assert not d.confirm_button.isEnabled()
 
+    def test_the_dialog_cannot_be_closed_while_sending(self, qapp:QApplication) -> None:
+        d = make(qapp, FakeApi(awaiting()))
+        d.busy = True
+        d._update_buttons()  # pylint: disable=protected-access
+        assert not d.close_button.isEnabled()
+        d.reject()
+        assert d.isVisible()
+        d.busy = False
+        d._update_buttons()  # pylint: disable=protected-access
+        d.reject()
+        assert not d.isVisible()
+
+    def test_a_list_asked_before_the_weight_is_dropped(self, qapp:QApplication) -> None:
+        api = FakeApi(awaiting(1), awaiting(2))
+        d = make(qapp, api)
+        stale = [awaiting(1), awaiting(2)]
+        d.spin.setValue(30)
+        d.confirm_button.click()
+        _wait(qapp, lambda: len(d.weighed) == 1)
+        d._on_done('list', d._seq - 1, stale, None)  # pylint: disable=protected-access
+        assert ids(d) == ['r2']
+
     def test_a_network_error_keeps_the_typed_weight(self, qapp:QApplication) -> None:
         api = FakeApi(awaiting())
         api.weigh_error = roasters.RoasterUnavailable('network', 'x')
@@ -201,11 +223,10 @@ class TestWeighing:
         api.weigh_error = rounds.RoundNotAwaiting('đã cân')
         d = make(qapp, api)
         d.spin.setValue(31)
-        calls = api.list_calls
         d.confirm_button.click()
-        _wait(qapp, lambda: api.list_calls > calls)  # the list is read again: the row that was weighed elsewhere is gone
+        _wait(qapp, lambda: 'đã được cân' in d.statusLabel.text())  # said once the list was read again
         api.weigh_error = None
-        assert 'đã được cân' in d.errorLabel.text() or 'đã được cân' in d.statusLabel.text()
+        assert 'đã được cân' in d.statusLabel.text()
 
     def test_forbidden_is_explained(self, qapp:QApplication) -> None:
         api = FakeApi(awaiting())

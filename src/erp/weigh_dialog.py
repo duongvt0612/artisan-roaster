@@ -119,7 +119,7 @@ class WeighPendingDialog(ArtisanDialog):
     __slots__ = [
         'remaining', 'need_login', 'busy', 'weighed', 'results', 'statusLabel', 'resultLabel', 'detail', 'detailTitle', 'detailFacts', 'spin',
         'lossLabel', 'notesEdit', 'errorLabel', 'refresh_button', 'confirm_button', 'close_button', '_api', '_bridge', '_seq', '_rounds',
-        '_shown_id', '_notice',
+        '_shown_id', '_notice', '_weighing',
     ]
 
     def __init__(
@@ -143,6 +143,7 @@ class WeighPendingDialog(ArtisanDialog):
         self._rounds:list[AwaitingRound] = []
         self._shown_id:str|None = None            # the batch the weight box belongs to: another batch starts from an empty box
         self._notice:str = ''                     # said after the next list (a batch that was weighed elsewhere)
+        self._weighing:AwaitingRound|None = None  # the batch sent to the ERP: its answer belongs to it, whatever is picked meanwhile
 
         self.setStyleSheet(build_stylesheet(self.palette()) + _css(self.palette()))
         self.setMinimumWidth(640)
@@ -425,6 +426,12 @@ class WeighPendingDialog(ArtisanDialog):
     def _update_buttons(self) -> None:
         self.confirm_button.setEnabled(not self.busy and self.round_selected() is not None and self.spin.value() > 0)
         self.refresh_button.setEnabled(not self.busy)
+        self.close_button.setEnabled(not self.busy)
+
+    def reject(self) -> None:
+        if self.busy:
+            return # the ERP is taking a weight: closing now would lose its answer
+        super().reject()
 
     def _set_busy(self, busy:bool) -> None:
         self.busy = busy
@@ -464,6 +471,7 @@ class WeighPendingDialog(ArtisanDialog):
         if self.busy or r is None or kg <= 0:
             return
         self.show_error('')
+        self._weighing = r
         self._set_busy(True)
         self.confirm_button.setText(QApplication.translate('ERP', 'Đang gửi lên ERP…'))
         notes = self.notesEdit.text().strip()
@@ -471,7 +479,7 @@ class WeighPendingDialog(ArtisanDialog):
         self._run('weigh', 0, lambda: api.weigh_round(r.round_id, output_kg=kg, notes=notes or None))
 
     def _on_weighed(self, finished:Any, error:Any) -> None:
-        r = self.round_selected()
+        r, self._weighing = self._weighing, None
         self.confirm_button.setText(QApplication.translate('ERP', 'Xác nhận số cân'))
         self._set_busy(False)
         if error is not None:
@@ -483,6 +491,7 @@ class WeighPendingDialog(ArtisanDialog):
             self._show_error(error)
             return
         self.weighed.append(finished)
+        self._seq += 1 # a list asked before the weight was taken still has this batch in it: its answer is stale
         if r is not None:
             self._rounds = [x for x in self._rounds if x.round_id != r.round_id]
             text, bad = result_text(r.label, finished)
