@@ -254,6 +254,7 @@ def _install_banner(aw:'ApplicationWindow') -> None:
         _ensure_bridge()
         bar.reselect.connect(reselect_roaster)
         bar.finish_batch.connect(lambda: roast_flow.finish_batch(aw))
+        bar.weigh_pending.connect(lambda: roast_flow.open_awaiting(aw, relogin=lambda: require_login(aw)))
         _state.banner = bar
         roast_flow.set_listener(_on_batch_changed)
     except Exception as e: # pylint: disable=broad-except
@@ -298,6 +299,7 @@ def _on_batch_changed() -> None:
     """The roast batch changed (started, finished, cancelled): the banner and the window title say which one is running."""
     if _state.banner is not None:
         _state.banner.set_batch(roast_flow.banner_text())
+        _state.banner.set_awaiting(roast_flow.awaiting_count())
     _show_pending_files() # files were just queued when a batch is finished
     _refresh_title()
 
@@ -424,6 +426,7 @@ def require_roaster(aw:'ApplicationWindow') -> bool:
         if outcome == 'ok':
             _start_uploads() # files of batches finished earlier (maybe before a crash) are sent from now on
             roast_flow.resume_if_any(aw, _state.manager) # a batch left running by a crash is offered for finishing or cancelling
+            roast_flow.refresh_awaiting() # and the banner says how many finished batches still wait for their weight
             return True
         if outcome == 'login' and require_login(aw):
             continue # the login had expired meanwhile; he logged in again, choose now

@@ -48,6 +48,10 @@ class RoundNotRunning(RoasterError):
     """The batch was finished or cancelled already (ROUND_NOT_RUNNING)."""
 
 
+class RoundNotAwaiting(RoasterError):
+    """The batch is not waiting for a weight any more: weighed elsewhere, cancelled, or not finished yet (ROUND_NOT_AWAITING_WEIGH)."""
+
+
 class RoundNotCompleted(RoasterError):
     """The ERP does not take files of a batch that is not completed (yet): ROUND_NOT_COMPLETED. Worth a retry."""
 
@@ -61,6 +65,7 @@ _CONFLICTS:Final[dict[str, type[RoasterError]]] = {
     'QUOTA_EXCEEDED': QuotaExceeded,
     'COMMAND_NOT_ROASTABLE': NotRoastable,
     'ROUND_NOT_RUNNING': RoundNotRunning,
+    'ROUND_NOT_AWAITING_WEIGH': RoundNotAwaiting,
     'ROUND_NOT_COMPLETED': RoundNotCompleted,
     'FILE_INVALID': FileRejected,
     'FILE_ROUND_MISMATCH': FileRejected,
@@ -131,6 +136,35 @@ class FinishedRound:
     loss_percent:float
     loss_exceeded:bool
     tolerance_percent:float
+    # Finished without a weight ("Chưa cân được"): the ERP keeps the batch as awaiting weigh, so there is no output, loss or alert yet.
+    pending:bool = False
+
+
+@dataclass(frozen=True)
+class AwaitingRound:
+    """A finished batch of this user that still needs its weight (the roasted beans were left to cool before weighing)."""
+    round_id:str
+    round_number:int
+    command_id:str
+    command_code:str
+    kind:str
+    step_number:int
+    output_name:str
+    output_unit:str
+    input_kg:float
+    expected_output_kg:float
+    tolerance_percent:float
+    completed_at:datetime|None
+    roaster_name:str
+
+    @property
+    def label(self) -> str:
+        """'LS-1026-000123 · mẻ #3', the same words as Batch.label."""
+        return f'{self.command_code} · mẻ #{self.round_number}'
+
+    @property
+    def is_test(self) -> bool:
+        return self.kind == 'test'
 
 
 @dataclass(frozen=True)
@@ -241,13 +275,8 @@ def start_round(*, equipment_id:str, session_id:str, version:int, command_id:str
         raise _bad_reply() from e
 
 
-def finish_round(round_id:str, *, output_kg:float, notes:str|None = None, powder_color:str|None = None) -> FinishedRound:
-    body:dict[str, Any] = {'outputQuantity': output_kg}
-    if notes:
-        body['notes'] = notes
-    if powder_color:
-        body['powderColor'] = powder_color
-    data = request('POST', f'{config.get_artisan_url()}/rounds/{round_id}/complete', json=body, conflicts=_CONFLICTS)
+def _finished(data:Any) -> FinishedRound:
+    """The reply of a weighed finish (complete with a weight, or weigh later): output, expected kg, loss and the alert flag."""
     try:
         return FinishedRound(
             round_id=_text(data['roundId']), round_number=int(data.get('roundNumber') or 0), output_kg=_num(data.get('outputQuantity')),
@@ -255,6 +284,63 @@ def finish_round(round_id:str, *, output_kg:float, notes:str|None = None, powder
             loss_exceeded=bool(data.get('lossExceeded')), tolerance_percent=_num(data.get('tolerancePercentage')))
     except (KeyError, TypeError, ValueError, AttributeError) as e:
         raise _bad_reply() from e
+
+
+def finish_round(round_id:str, *, output_kg:float|None, notes:str|None = None, powder_color:str|None = None, pending:bool = False) -> FinishedRound:
+    """Ends the batch with the weight of the roasted beans, or (`pending`) without one: the ERP then keeps it as awaiting weigh and the
+    weight is given later with weigh_round. A weight must never be sent together with `pending`."""
+    body:dict[str, Any] = {}
+    if pending:
+        if output_kg is not None:
+            raise ValueError('a pending finish has no weight')
+        body['outputPending'] = True
+    else:
+        if output_kg is None:
+            raise ValueError('a weight is required unless the batch is pending')
+        body['outputQuantity'] = output_kg
+    if notes:
+        body['notes'] = notes
+    if powder_color:
+        body['powderColor'] = powder_color
+    data = request('POST', f'{config.get_artisan_url()}/rounds/{round_id}/complete', json=body, conflicts=_CONFLICTS)
+    if pending:
+        try:
+            return FinishedRound(round_id=_text(data['roundId']), round_number=int(data.get('roundNumber') or 0), output_kg=0.0,
+                                 expected_output_kg=_num(data.get('expectedOutputQuantity')), loss_percent=0.0, loss_exceeded=False,
+                                 tolerance_percent=0.0, pending=True)
+        except (KeyError, TypeError, ValueError, AttributeError) as e:
+            raise _bad_reply() from e
+    return _finished(data)
+
+
+def _awaiting(item:Any) -> AwaitingRound|None:
+    try:
+        output = item.get('output') or {}
+        return AwaitingRound(
+            round_id=_text(item['roundId']), round_number=int(item['roundNumber']), command_id=_text(item.get('commandId')),
+            command_code=_text(item['commandCode']), kind=_text(item.get('kind')) or 'normal', step_number=int(item.get('stepNumber') or 1),
+            output_name=_text(output.get('name')), output_unit=_text(output.get('unit')) or 'kg', input_kg=_num(item.get('inputKg')),
+            expected_output_kg=_num(item.get('expectedOutputQuantity')), tolerance_percent=_num(item.get('tolerancePercentage')),
+            completed_at=_dt(item.get('completedAt')), roaster_name=_text(item.get('roasterName')))
+    except (KeyError, TypeError, ValueError, AttributeError):
+        _log.info('skipping a malformed batch awaiting its weight')
+        return None
+
+
+def list_awaiting_weigh() -> list[AwaitingRound]:
+    """The batches of this user that were finished without a weight, oldest first."""
+    data = request('GET', f'{config.get_artisan_url()}/rounds/awaiting-weigh', conflicts=_CONFLICTS)
+    if not isinstance(data, list):
+        raise _bad_reply()
+    return [r for r in (_awaiting(item) for item in data) if r is not None]
+
+
+def weigh_round(round_id:str, *, output_kg:float, notes:str|None = None) -> FinishedRound:
+    """Gives the weight of a batch that was finished without one. The ERP answers synchronously with the loss, like a normal finish."""
+    body:dict[str, Any] = {'outputQuantity': output_kg}
+    if notes:
+        body['notes'] = notes
+    return _finished(request('POST', f'{config.get_artisan_url()}/rounds/{round_id}/weigh', json=body, conflicts=_CONFLICTS))
 
 
 def cancel_round(round_id:str, *, reason:str) -> None:

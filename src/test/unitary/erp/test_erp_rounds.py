@@ -157,6 +157,90 @@ class TestFinish:
             rounds.finish_round('r1', output_kg=1)
 
 
+class TestFinishPending:
+    """'Chưa cân được': the batch ends without a weight, the ERP keeps it as 'awaiting weigh' and the roaster is free again."""
+
+    def test_sends_the_flag_and_no_weight(self, sess:Any) -> None:
+        sess.authed_request.return_value = _resp(200, _ok({'roundId': 'r1', 'roundNumber': 3, 'status': 'awaiting_weigh', 'outputPending': True,
+                                                          'expectedOutputQuantity': 32}))
+        out = rounds.finish_round('r1', output_kg=None, pending=True, powder_color='#85', notes='nguội')
+        args, kwargs = sess.authed_request.call_args
+        assert args == ('POST', config.get_artisan_url() + '/rounds/r1/complete')
+        assert kwargs['json'] == {'outputPending': True, 'notes': 'nguội', 'powderColor': '#85'}  # never an outputQuantity next to the flag
+        assert out.pending and out.round_id == 'r1' and out.round_number == 3 and out.expected_output_kg == 32
+        assert out.output_kg == 0 and not out.loss_exceeded
+
+    def test_a_weighed_finish_is_not_pending(self, sess:Any) -> None:
+        sess.authed_request.return_value = _resp(200, _ok({'roundId': 'r1', 'roundNumber': 3, 'outputQuantity': 30, 'expectedOutputQuantity': 32,
+                                                          'lossRate': 25.0, 'lossExceeded': True, 'tolerancePercentage': 15}))
+        assert not rounds.finish_round('r1', output_kg=30).pending
+
+    def test_a_weight_is_required_unless_pending(self) -> None:
+        with pytest.raises(ValueError):
+            rounds.finish_round('r1', output_kg=None)
+
+
+AWAITING = {
+    'roundId': 'r1', 'roundNumber': 3, 'commandId': 'c1', 'commandCode': 'LS-1026-000123', 'kind': 'normal', 'stepNumber': 1,
+    'output': {'code': 'TP-ARA', 'name': 'Arabica Cầu Đất rang', 'unit': 'kg'}, 'inputKg': 12, 'expectedOutputQuantity': 10.2,
+    'tolerancePercentage': 5, 'completedAt': '2026-10-29T07:30:00.000Z', 'roasterName': 'Máy 15kg',
+}
+
+
+class TestAwaitingWeigh:
+    def test_lists_the_batches_waiting_for_a_weight(self, sess:Any) -> None:
+        sess.authed_request.return_value = _resp(200, _ok([AWAITING]))
+        out = rounds.list_awaiting_weigh()
+        args, _kwargs = sess.authed_request.call_args
+        assert args == ('GET', config.get_artisan_url() + '/rounds/awaiting-weigh')
+        assert out == [rounds.AwaitingRound(
+            round_id='r1', round_number=3, command_id='c1', command_code='LS-1026-000123', kind='normal', step_number=1,
+            output_name='Arabica Cầu Đất rang', output_unit='kg', input_kg=12.0, expected_output_kg=10.2, tolerance_percent=5.0,
+            completed_at=datetime(2026, 10, 29, 7, 30, tzinfo=UTC), roaster_name='Máy 15kg')]
+        assert out[0].label == 'LS-1026-000123 · mẻ #3'
+
+    def test_a_broken_item_does_not_hide_the_others(self, sess:Any) -> None:
+        sess.authed_request.return_value = _resp(200, _ok([{'roundNumber': 1}, AWAITING]))
+        assert [r.round_id for r in rounds.list_awaiting_weigh()] == ['r1']
+
+    def test_not_a_list_is_a_server_error(self, sess:Any) -> None:
+        sess.authed_request.return_value = _resp(200, _ok({'x': 1}))
+        with pytest.raises(roasters.RoasterUnavailable):
+            rounds.list_awaiting_weigh()
+
+    def test_an_erp_without_the_feature_says_so(self, sess:Any) -> None:
+        # an older ERP has no such route: 404 must read as "not supported", not as a missing batch
+        sess.authed_request.return_value = _resp(404, _fail('Not Found'))
+        with pytest.raises(roasters.RoasterNotFound):
+            rounds.list_awaiting_weigh()
+
+
+class TestWeigh:
+    def test_sends_the_weight_and_notes(self, sess:Any) -> None:
+        sess.authed_request.return_value = _resp(200, _ok({'roundId': 'r1', 'roundNumber': 3, 'outputQuantity': 9.5, 'expectedOutputQuantity': 10.2,
+                                                          'lossRate': 20.8, 'lossExceeded': True, 'tolerancePercentage': 5}))
+        out = rounds.weigh_round('r1', output_kg=9.5, notes='cân sau')
+        args, kwargs = sess.authed_request.call_args
+        assert args == ('POST', config.get_artisan_url() + '/rounds/r1/weigh')
+        assert kwargs['json'] == {'outputQuantity': 9.5, 'notes': 'cân sau'}
+        assert out == rounds.FinishedRound('r1', 3, 9.5, 10.2, 20.8, True, 5.0)
+
+    def test_notes_are_left_out_when_empty(self, sess:Any) -> None:
+        sess.authed_request.return_value = _resp(200, _ok({'roundId': 'r1'}))
+        rounds.weigh_round('r1', output_kg=1)
+        assert sess.authed_request.call_args.kwargs['json'] == {'outputQuantity': 1}
+
+    def test_already_weighed_elsewhere(self, sess:Any) -> None:
+        sess.authed_request.return_value = _resp(409, _fail('ROUND_NOT_AWAITING_WEIGH', 'đã cân'))
+        with pytest.raises(rounds.RoundNotAwaiting):
+            rounds.weigh_round('r1', output_kg=1)
+
+    def test_somebody_elses_batch_is_forbidden(self, sess:Any) -> None:
+        sess.authed_request.return_value = _resp(403, _fail('Forbidden', 'Mẻ này do người khác bắt đầu'))
+        with pytest.raises(roasters.RoasterForbidden):
+            rounds.weigh_round('r1', output_kg=1)
+
+
 class TestCancel:
     def test_sends_the_reason(self, sess:Any) -> None:
         sess.authed_request.return_value = _resp(200, _ok({'roundId': 'r1', 'message': 'ok'}))

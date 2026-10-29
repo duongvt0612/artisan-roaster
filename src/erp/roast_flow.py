@@ -8,6 +8,8 @@
 #   * Once the roast is stopped (or when the operator presses the button of the banner after DROP) the batch is finished (finish_batch).
 #   * RESET with a batch running asks whether to cancel it on the ERP (before_reset).
 #   * After a crash the ERP still has the batch: Artisan asks what to do with it when it is started again (resume_if_any).
+#   * The roasted beans cool before they are weighed: a batch can end with "Chưa cân được" (the ERP keeps it as awaiting weigh, the roaster is free
+#     for the next batch) and its weight is typed later in the list opened by open_awaiting.
 # The ERP is the source of truth, nothing is stored locally. The module talks to Artisan only through the few attributes of
 # `aw.qmc` it needs (weight, title, beans, flagstart, timeindex, roastepoch, ground_color).
 
@@ -31,7 +33,7 @@ from typing import Any, Final, TYPE_CHECKING, cast
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication, QInputDialog, QMessageBox
 
-from erp import background, batch as erp_batch, finish_dialog, roast_files, roasters, rounds, start_dialog
+from erp import background, batch as erp_batch, finish_dialog, roast_files, roasters, rounds, start_dialog, weigh_dialog
 from erp.attachments import UploadQueue, Uploader
 from erp.batch import Batch
 from erp.lease import LeaseManager
@@ -57,6 +59,7 @@ class _Flow:
         self.files_wait:Batch|None = None        # finished while the roast was still recording: its files are built once recording stops
         self.queue:UploadQueue|None = None       # where the files of finished batches wait for the ERP (None: files are not sent)
         self.uploader:Uploader|None = None
+        self.awaiting:int|None = None            # how many batches of this user wait for their weight (None: the ERP was not asked successfully yet)
 
 
 _flow:_Flow = _Flow()
@@ -94,6 +97,11 @@ def current_batch() -> Batch|None:
 
 def has_unfinished_batch() -> bool:
     return _flow.batch is not None
+
+
+def awaiting_count() -> int|None:
+    """How many finished batches of this user still wait for their weight; None while that is not known."""
+    return _flow.awaiting
 
 
 def title_suffix() -> str:
@@ -198,7 +206,8 @@ def before_start(aw:'ApplicationWindow', lease:LeaseManager|None, *, capacity_kg
     if _flow.batch is not None:
         # the previous batch was never finished: it has to be, or Artisan loses the weight of those beans
         _info(aw, QApplication.translate('ERP', 'Mẻ {0} chưa được kết thúc trên ERP.').format(_flow.batch.label),
-              QApplication.translate('ERP', 'Hãy nhập số kg thành phẩm của mẻ đó trước khi bắt đầu mẻ mới.'))
+              QApplication.translate('ERP', 'Hãy nhập số kg thành phẩm của mẻ đó trước khi bắt đầu mẻ mới. '
+                                            'Nếu chưa cân được, chọn “Chưa cân được” để cân sau.'))
         if not finish_batch(aw, force=True):
             return False
     if lease is None or not lease.is_ok:
@@ -362,8 +371,16 @@ def finish_batch(aw:'ApplicationWindow', *, force:bool = False) -> bool:
     if need_login:
         return False
     if finished is not None:
-        _set_weight(aw, output_kg=finished.output_kg)
         _flow.batch = None
+        if finished.pending:
+            # no weight yet: the output stays empty, there is no loss to report, and the roaster is free for the next batch
+            _flow.awaiting = (_flow.awaiting or 0) + 1
+            _changed()
+            _tell(aw, QApplication.translate('ERP', 'Mẻ {0} đã chuyển sang chờ cân. Bấm “Mẻ chờ cân” để nhập số kg sau khi cân.').format(b.label))
+            _after_finished(aw, b)
+            refresh_awaiting()
+            return True
+        _set_weight(aw, output_kg=finished.output_kg)
         _changed()
         _report(aw, finished)
         _after_finished(aw, b)
@@ -376,19 +393,54 @@ def finish_batch(aw:'ApplicationWindow', *, force:bool = False) -> bool:
     return False
 
 
-def _report(aw:'ApplicationWindow', finished:rounds.FinishedRound) -> None:
-    text = QApplication.translate('ERP', 'Đã kết thúc mẻ trên ERP: {0} kg thành phẩm, hao hụt {1}%').format(
-        start_dialog.format_kg(finished.output_kg), start_dialog.format_kg(round(finished.loss_percent, 1)))
+def _tell(aw:'ApplicationWindow', text:str) -> None:
+    """A line in Artisan's message bar: it does not interrupt the roaster the way a message box does."""
     try:
         aw.sendmessage(text)
     except Exception as e: # pylint: disable=broad-except
         _log.exception(e)
+
+
+def _report(aw:'ApplicationWindow', finished:rounds.FinishedRound) -> None:
+    _tell(aw, QApplication.translate('ERP', 'Đã kết thúc mẻ trên ERP: {0} kg thành phẩm, hao hụt {1}%').format(
+        start_dialog.format_kg(finished.output_kg), start_dialog.format_kg(round(finished.loss_percent, 1))))
     if finished.loss_exceeded:
         deviation = finish_dialog.deviation_percent(finished.output_kg, finished.expected_output_kg)
         _info(aw, QApplication.translate('ERP', 'Sản lượng {0} kg lệch {1}% so với dự kiến {2} kg, vượt ngưỡng cho phép (±{3}%).').format(
             start_dialog.format_kg(finished.output_kg), ('+' if deviation > 0 else '') + start_dialog.format_kg(round(deviation, 1)),
             start_dialog.format_kg(finished.expected_output_kg), start_dialog.format_kg(finished.tolerance_percent)),
               QApplication.translate('ERP', 'ERP đã gửi cảnh báo tới quản lý. Nếu bạn nhập nhầm số kg, hãy báo quản lý sửa trên ERP.'))
+
+
+def refresh_awaiting() -> None:
+    """Asks the ERP how many batches of this user wait for their weight (the banner shows it). Not awaited: the answer is handled when it arrives;
+    when the ERP cannot tell (network, an older ERP without the list) the count simply stays as it was."""
+
+    def answered(listed:Any, error:BaseException|None) -> None:
+        if error is not None:
+            _log.info('could not ask the ERP for the batches awaiting their weight: %r', error)
+            return
+        _flow.awaiting = len(listed)
+        _changed()
+
+    background.run_in_thread(lambda: rounds.list_awaiting_weigh(), answered, name='erp-awaiting-weigh')
+
+
+def open_awaiting(aw:'ApplicationWindow', *, relogin:Callable[[], bool]) -> bool:
+    """Opens the list of batches that wait for their weight. False if the ERP login had expired (the operator is asked to log in again)."""
+    dialog = weigh_dialog.WeighPendingDialog(aw, aw)
+    try:
+        dialog.exec()
+        remaining, need_login = dialog.remaining, dialog.need_login
+    finally:
+        dialog.deleteLater()
+    if remaining is not None:
+        _flow.awaiting = remaining
+        _changed()
+    if need_login:
+        relogin()
+        return False
+    return True
 
 
 def _after_finished(aw:'ApplicationWindow', b:Batch) -> None:

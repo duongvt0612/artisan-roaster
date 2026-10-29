@@ -198,3 +198,42 @@ class TestPendingFiles:
         bar.apply(LeaseState.LOST, 'Máy', 'force_released')
         bar.set_pending_files(3)
         assert '3 tệp chưa gửi lên ERP' in bar.label.text()
+
+
+class TestAwaitingWeigh:
+    """The button that opens the list of batches finished without a weight ("Chưa cân được")."""
+
+    def test_the_button_is_there_even_when_nothing_is_known_yet(self, bar:banner.LeaseBanner) -> None:
+        bar.apply(LeaseState.HELD, 'Máy', '')
+        assert not bar.weigh_button.isHidden() and bar.weigh_button.text() == 'Mẻ chờ cân'
+
+    def test_the_count_is_shown_on_the_button(self, bar:banner.LeaseBanner) -> None:
+        bar.apply(LeaseState.HELD, 'Máy', '')
+        bar.set_awaiting(3)
+        assert bar.weigh_button.text() == 'Mẻ chờ cân (3)' and '3' in bar.weigh_button.accessibleName()
+        bar.set_awaiting(0)
+        assert bar.weigh_button.text() == 'Mẻ chờ cân' and not bar.weigh_button.isHidden()  # still there: the list may be opened to check
+        bar.set_awaiting(None)
+        assert bar.weigh_button.text() == 'Mẻ chờ cân'
+
+    def test_the_button_opens_the_list(self, bar:banner.LeaseBanner) -> None:
+        bar.apply(LeaseState.HELD, 'Máy', '')
+        got:list[int] = []
+        bar.weigh_pending.connect(lambda: got.append(1))
+        bar.weigh_button.click()
+        assert got == [1]
+
+    def test_weighing_needs_no_roaster_so_it_stays_when_the_roaster_is_lost(self, bar:banner.LeaseBanner) -> None:
+        bar.apply(LeaseState.LOST, 'Máy', 'force_released')
+        assert not bar.weigh_button.isHidden()
+
+    def test_the_count_survives_a_state_change(self, bar:banner.LeaseBanner) -> None:
+        bar.apply(LeaseState.HELD, 'Máy', '')
+        bar.set_awaiting(2)
+        bar.apply(LeaseState.SUSPECT, 'Máy', 'no_connection')
+        assert bar.weigh_button.text() == 'Mẻ chờ cân (2)'
+
+    def test_idle_hides_everything(self, bar:banner.LeaseBanner) -> None:
+        bar.apply(LeaseState.HELD, 'Máy', '')
+        bar.apply(LeaseState.IDLE, 'Máy', '')
+        assert not bar.isVisible()

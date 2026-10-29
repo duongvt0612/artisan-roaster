@@ -79,6 +79,7 @@ class LeaseBanner(QFrame):
 
     reselect = pyqtSignal()
     finish_batch = pyqtSignal()
+    weigh_pending = pyqtSignal()
 
     def __init__(self, parent:QWidget|None = None) -> None:
         super().__init__(parent)
@@ -86,6 +87,7 @@ class LeaseBanner(QFrame):
         self.kind:str = 'held'
         self.batch_text:str = ''          # which batch is running ('' if none)
         self.files_text:str = ''          # how many files of finished batches are still to be sent to the ERP ('' if none)
+        self.awaiting:int|None = None     # how many finished batches still wait for their weight (None: not known yet)
         self._shown:tuple[LeaseState, str, str] = (LeaseState.IDLE, '', '')
         self.label:QLabel = QLabel('')
         self.label.setWordWrap(True)
@@ -97,10 +99,17 @@ class LeaseBanner(QFrame):
         self.finish_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.finish_button.clicked.connect(self.finish_batch.emit)
         self.finish_button.setVisible(False)
+        # the batches finished with "Chưa cân được": the list is opened from here, so it is always one click away while roasting
+        self.weigh_button:QPushButton = QPushButton('')
+        self.weigh_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.weigh_button.clicked.connect(self.weigh_pending.emit)
+        self.weigh_button.setVisible(False)
+        self._render_weigh_button()
         layout = QHBoxLayout(self)
         layout.setContentsMargins(14, 6, 14, 6)
         layout.addWidget(self.label, 1)
         layout.addWidget(self.finish_button)
+        layout.addWidget(self.weigh_button)
         layout.addWidget(self.reselect_button)
         self.setStyleSheet(_stylesheet(self.palette()))
         self.setProperty('kind', self.kind)
@@ -131,6 +140,18 @@ class LeaseBanner(QFrame):
         self.files_text = QApplication.translate('ERP', '{0} tệp chưa gửi lên ERP').format(count) if count > 0 else ''
         self._render()
 
+    def set_awaiting(self, count:int|None) -> None:
+        """Tells how many finished batches wait for their weight (None: not known); it is the number on the button that opens their list."""
+        self.awaiting = count
+        self._render_weigh_button()
+
+    def _render_weigh_button(self) -> None:
+        count = self.awaiting or 0
+        self.weigh_button.setText(QApplication.translate('ERP', 'Mẻ chờ cân ({0})').format(count) if count > 0 else QApplication.translate('ERP', 'Mẻ chờ cân'))
+        self.weigh_button.setAccessibleName(QApplication.translate('ERP', 'Mẻ chờ cân: {0} mẻ chưa nhập số kg').format(count) if count > 0
+                                            else QApplication.translate('ERP', 'Mở danh sách mẻ chờ cân'))
+        self.weigh_button.setToolTip(QApplication.translate('ERP', 'Các mẻ của bạn đã rang xong nhưng chưa nhập số kg thành phẩm'))
+
     def _render(self) -> None:
         state, name, reason = self._shown
         if state is LeaseState.IDLE:
@@ -154,6 +175,7 @@ class LeaseBanner(QFrame):
             text = f'{text} · {extras}' if state is LeaseState.HELD else f'{text} {extras}'
         self.label.setText(text)
         self.finish_button.setVisible(bool(self.batch_text))
+        self.weigh_button.setVisible(True) # weighing needs no roaster: it stays even when the roaster is lost
         self.setVisible(True)
 
 

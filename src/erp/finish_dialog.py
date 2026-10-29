@@ -6,6 +6,8 @@
 # The dialog that ends a roast batch on the ERP: the operator weighs the roasted beans and types the kg. It shows the kg that went in,
 # the kg the formula expects and the loss ("hao hụt") of what he typed, red when the weight is outside what the formula allows (expected kg
 # ± tolerance, the rule of the ERP's own alert), so that a mistyped weight is noticed before the ERP raises it. Only when the ERP has accepted the weight does the dialog close.
+# The roasted beans are left to cool before they are weighed, so "Chưa cân được" ends the batch without a weight: the ERP keeps it as
+# awaiting weigh, the roaster is free for the next batch and the weight is given later (weigh_dialog.py).
 
 # LICENSE
 # This program or module is free software: you can redistribute it and/or
@@ -75,6 +77,7 @@ def loss_text(input_kg:float, output_kg:float, expected_kg:float, tolerance_perc
 def _css(palette:QPalette) -> str:
     dark = palette.color(QPalette.ColorRole.Window).lightness() < 128
     ok_fg = '#9be3b0' if dark else '#14532d'
+    edge, btn, btn_hover = ('#5a5a5a', '#2d2d2d', '#3a3a3a') if dark else ('#c4c4c4', '#ffffff', '#f0f0f0')
     bad_bg, bad_fg = ('#3d1f1f', '#ffb4ab') if dark else ('#fdecea', '#9b1c1c')
     return f"""
         QLabel#erpSection {{ font-weight: 600; }}
@@ -82,6 +85,11 @@ def _css(palette:QPalette) -> str:
         QLabel#erpLoss[bad="false"] {{ color: {ok_fg}; font-weight: 600; font-size: 15px; }}
         QLabel#erpLoss[bad="true"] {{ background: {bad_bg}; color: {bad_fg}; font-weight: 600; font-size: 15px; border-radius: 6px; padding: 6px 10px; }}
         QDoubleSpinBox {{ min-height: 26px; padding: 4px 8px; border-radius: 6px; font-size: 16px; }}
+        QLabel#erpHint {{ font-size: 12px; }}
+        QPushButton#erpNotYet {{ min-height: 22px; padding: 8px 14px; border: 1px solid {edge}; border-radius: 6px; background: {btn}; font-weight: 600; }}
+        QPushButton#erpNotYet:hover {{ background: {btn_hover}; }}
+        QPushButton#erpNotYet:focus {{ border: 2px solid {edge}; padding: 7px 13px; }}
+        QPushButton#erpNotYet:disabled {{ color: {edge}; }}
     """
 
 
@@ -93,7 +101,7 @@ class FinishRoundDialog(ArtisanDialog):
 
     __slots__ = [
         'batch', 'result_round', 'already_over', 'need_login', 'busy', 'spin', 'lossLabel', 'colorEdit', 'notesEdit', 'errorLabel',
-        'finish_button', 'later_button', '_api', '_bridge',
+        'finish_button', 'pending_button', 'later_button', '_api', '_bridge',
     ]
 
     def __init__(
@@ -172,6 +180,17 @@ class FinishRoundDialog(ArtisanDialog):
         self.finish_button.setAutoDefault(True)
         self.finish_button.setEnabled(False)
         self.finish_button.clicked.connect(self._finish)
+        self.pending_button = QPushButton(QApplication.translate('ERP', 'Chưa cân được'))
+        self.pending_button.setObjectName('erpNotYet')
+        self.pending_button.setAutoDefault(False)
+        self.pending_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.pending_button.setAccessibleDescription(QApplication.translate('ERP', 'Kết thúc mẻ mà chưa nhập số kg thành phẩm, cân sau'))
+        self.pending_button.clicked.connect(self._finish_pending)
+        pending_hint = QLabel(QApplication.translate(
+            'ERP', 'Cà phê rang còn nóng, chưa cân? Chọn “Chưa cân được”: mẻ chuyển sang chờ cân, máy rang rảnh để rang mẻ khác. '
+                   'Cân sau bằng nút “Mẻ chờ cân” trên dải thông báo máy rang.'))
+        pending_hint.setObjectName('erpHint')
+        pending_hint.setWordWrap(True)
         self.later_button = QPushButton(QApplication.translate('ERP', 'Để sau'))
         self.later_button.setObjectName('erpSecondary')
         self.later_button.setAutoDefault(False)
@@ -203,13 +222,18 @@ class FinishRoundDialog(ArtisanDialog):
         layout.addWidget(self.errorLabel)
         layout.addSpacing(12)
         layout.addWidget(self.finish_button)
+        layout.addSpacing(8)
+        layout.addWidget(self.pending_button)
+        layout.addSpacing(4)
+        layout.addWidget(pending_hint)
         layout.addSpacing(4)
         layout.addWidget(self.later_button, 0, Qt.AlignmentFlag.AlignHCenter)
 
         self.setTabOrder(self.spin, self.colorEdit)
         self.setTabOrder(self.colorEdit, self.notesEdit)
         self.setTabOrder(self.notesEdit, self.finish_button)
-        self.setTabOrder(self.finish_button, self.later_button)
+        self.setTabOrder(self.finish_button, self.pending_button)
+        self.setTabOrder(self.pending_button, self.later_button)
         self.spin.setFocus()
         self.spin.selectAll()
         self._update()
@@ -224,6 +248,7 @@ class FinishRoundDialog(ArtisanDialog):
             style.unpolish(self.lossLabel)
             style.polish(self.lossLabel)
         self.finish_button.setEnabled(not self.busy and self.spin.value() > 0)
+        self.pending_button.setEnabled(not self.busy)
 
     def show_error(self, text:str) -> None:
         self.errorLabel.setText(text)
@@ -233,13 +258,25 @@ class FinishRoundDialog(ArtisanDialog):
     @pyqtSlot(bool)
     def _finish(self, _:bool = False) -> None:
         kg = self.spin.value()
-        if self.busy or kg <= 0:
+        if kg <= 0:
+            return
+        self._send(kg=kg, pending=False)
+
+    @pyqtSlot()
+    @pyqtSlot(bool)
+    def _finish_pending(self, _:bool = False) -> None:
+        """"Chưa cân được": no weight is sent, whatever is typed in the box."""
+        self._send(kg=None, pending=True)
+
+    def _send(self, *, kg:float|None, pending:bool) -> None:
+        if self.busy:
             return
         self.show_error('')
         self.busy = True
         self.spin.setEnabled(False)
         self.finish_button.setEnabled(False)
-        self.finish_button.setText(QApplication.translate('ERP', 'Đang gửi lên ERP…'))
+        self.pending_button.setEnabled(False)
+        (self.pending_button if pending else self.finish_button).setText(QApplication.translate('ERP', 'Đang gửi lên ERP…'))
         color, notes = self.colorEdit.text().strip(), self.notesEdit.text().strip()
         bridge, api, round_id = self._bridge, self._api, self.batch.round_id
 
@@ -247,7 +284,10 @@ class FinishRoundDialog(ArtisanDialog):
             result:Any = None
             error:Any = None
             try:
-                result = api.finish_round(round_id, output_kg=kg, notes=notes or None, powder_color=color or None)
+                if pending:
+                    result = api.finish_round(round_id, output_kg=None, notes=notes or None, powder_color=color or None, pending=True)
+                else:
+                    result = api.finish_round(round_id, output_kg=kg, notes=notes or None, powder_color=color or None)
             except Exception as e: # pylint: disable=broad-except
                 error = e
             try:
@@ -262,6 +302,7 @@ class FinishRoundDialog(ArtisanDialog):
         self.busy = False
         self.spin.setEnabled(True)
         self.finish_button.setText(QApplication.translate('ERP', 'Hoàn thành mẻ rang'))
+        self.pending_button.setText(QApplication.translate('ERP', 'Chưa cân được'))
         self._update()
         if error is None:
             self.result_round = result
