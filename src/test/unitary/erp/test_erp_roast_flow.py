@@ -17,7 +17,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PyQt6.QtCore import QTimer  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
-from erp import background, batch as erp_batch, roast_flow, roasters, rounds  # noqa: E402
+from erp import background, batch as erp_batch, roast_flow, roasters, rounds, weigh_dialog  # noqa: E402,F401
 from erp.rounds import ActiveRound, FinishedRound, RoastCommand, RoundInput, StartedRound  # noqa: E402
 
 
@@ -105,6 +105,25 @@ class FakeFinishDialog:
         pass
 
 
+class FakeWeighDialog:
+    """Scripted WeighPendingDialog: what is left to weigh when it closes, and whether the login expired meanwhile."""
+    script:list[dict[str, Any]] = []
+    created:list['FakeWeighDialog'] = []
+
+    def __init__(self, _parent:Any, _aw:Any, **kw:Any) -> None:
+        self.kw = kw
+        step = FakeWeighDialog.script.pop(0)
+        self.remaining = step.get('remaining')
+        self.need_login = bool(step.get('need_login', False))
+        FakeWeighDialog.created.append(self)
+
+    def exec(self) -> int:
+        return 0
+
+    def deleteLater(self) -> None:  # noqa: N802
+        pass
+
+
 class Env(SimpleNamespace):
     infos:list[tuple[str, str]]
     choices:list[int]
@@ -119,6 +138,7 @@ def env(qapp:QApplication) -> Generator[Env, None, None]:  # noqa: ARG001
     roast_flow._reset_state()  # pylint: disable=protected-access
     FakeStartDialog.script, FakeStartDialog.created = [], []
     FakeFinishDialog.script, FakeFinishDialog.created = [], []
+    FakeWeighDialog.script, FakeWeighDialog.created = [], []
     e = Env(infos=[], choices=[], asked=[], reasons=[], api=MagicMock(), changed=MagicMock())
 
     def info(_aw:Any, text:str, detail:str = '') -> None:
@@ -132,7 +152,9 @@ def env(qapp:QApplication) -> Generator[Env, None, None]:  # noqa: ARG001
         return e.reasons.pop(0)
 
     e.api.active_round.return_value = None
+    e.api.list_awaiting_weigh.return_value = []
     with patch.object(roast_flow.start_dialog, 'StartRoundDialog', FakeStartDialog), \
+         patch.object(roast_flow.weigh_dialog, 'WeighPendingDialog', FakeWeighDialog), \
          patch.object(roast_flow.finish_dialog, 'FinishRoundDialog', FakeFinishDialog), \
          patch.object(roast_flow, '_info', info), patch.object(roast_flow, '_choose', choose), patch.object(roast_flow, '_ask_reason', reason), \
          patch.object(roast_flow, 'rounds', e.api):
@@ -673,3 +695,86 @@ class TestFiles:
         self.recorded(aw)
         self.finish(aw)
         uploads.uploader.wake.assert_not_called()
+
+
+def pending_round() -> FinishedRound:
+    return FinishedRound('r1', 3, 0.0, 32.0, 0.0, False, 0.0, pending=True)
+
+
+class TestNotWeighedYet:
+    """"Chưa cân được": the batch ends without a weight, the roaster is free at once and the operator can roast the next batch."""
+
+    def test_the_batch_is_closed_without_a_weight_and_without_a_loss_report(self, env:Env) -> None:
+        roast_flow._flow.batch = a_batch()  # pylint: disable=protected-access
+        FakeFinishDialog.script = [{'finished': pending_round()}]
+        aw = FakeAw()
+        aw.qmc.weight = (40.0, 0.0, 'Kg')
+        assert roast_flow.finish_batch(aw) is True  # type:ignore[arg-type]
+        assert roast_flow.current_batch() is None and not roast_flow.has_unfinished_batch()
+        assert aw.qmc.weight == (40.0, 0.0, 'Kg')   # nothing was weighed: the output stays empty
+        assert 'chờ cân' in aw.messages[0] and 'LS-1026-000123' in aw.messages[0]
+        assert env.infos == []                      # no modal box: the operator goes on roasting
+        env.changed.assert_called()
+
+    def test_start_is_not_blocked_by_a_batch_left_without_a_weight(self, env:Env) -> None:
+        roast_flow._flow.batch = a_batch()  # pylint: disable=protected-access
+        FakeFinishDialog.script = [{'finished': pending_round()}]
+        FakeStartDialog.script = [accepted_start()]
+        assert start(FakeAw()) is True
+        assert 'Chưa cân được' in env.infos[0][1]   # the reminder tells him he can leave it for later
+        b = roast_flow.current_batch()
+        assert b is not None and b.round_id == 'r1'
+
+    def test_the_count_of_batches_waiting_goes_up_at_once_and_is_checked_with_the_erp(self, env:Env, qapp:QApplication) -> None:
+        roast_flow._flow.batch = a_batch()  # pylint: disable=protected-access
+        FakeFinishDialog.script = [{'finished': pending_round()}]
+        env.api.list_awaiting_weigh.return_value = [object(), object()]
+        roast_flow.finish_batch(FakeAw(), force=True)  # type:ignore[arg-type]
+        assert roast_flow.awaiting_count() == 1
+        settle(qapp)
+        assert roast_flow.awaiting_count() == 2
+
+    def test_the_files_of_the_batch_still_follow(self, env:Env) -> None:  # noqa: ARG002
+        queue, uploader = MagicMock(), MagicMock()
+        roast_flow.set_uploads(queue, uploader)
+        aw = FakeAw()
+        TestFiles.recorded(aw)
+        FakeFinishDialog.script = [{'finished': pending_round()}]
+        with patch.object(roast_flow.roast_files, 'build_and_enqueue', return_value=[MagicMock()]) as build, \
+             patch.object(roast_flow.roast_files, 'wait_cursor', return_value=MagicMock()):
+            assert roast_flow.finish_batch(aw, force=True)  # type:ignore[arg-type]
+        build.assert_called_once()
+
+
+class TestAwaiting:
+    def test_refresh_reads_the_count_from_the_erp(self, env:Env, qapp:QApplication) -> None:
+        env.api.list_awaiting_weigh.return_value = [object(), object(), object()]
+        assert roast_flow.awaiting_count() is None   # unknown until the ERP answers
+        roast_flow.refresh_awaiting()
+        settle(qapp)
+        assert roast_flow.awaiting_count() == 3
+        env.changed.assert_called()
+
+    def test_an_erp_failure_leaves_the_count_unknown(self, env:Env, qapp:QApplication) -> None:
+        env.api.list_awaiting_weigh.side_effect = roasters.RoasterUnavailable('network', 'x')
+        roast_flow.refresh_awaiting()
+        settle(qapp)
+        assert roast_flow.awaiting_count() is None
+
+    def test_an_older_erp_without_the_feature_is_not_an_error(self, env:Env, qapp:QApplication) -> None:
+        env.api.list_awaiting_weigh.side_effect = roasters.RoasterNotFound('x')
+        roast_flow.refresh_awaiting()
+        settle(qapp)
+        assert roast_flow.awaiting_count() is None and env.infos == []
+
+    def test_opening_the_list_keeps_what_is_left_to_weigh(self, env:Env) -> None:
+        FakeWeighDialog.script = [{'remaining': 2}]
+        assert roast_flow.open_awaiting(FakeAw(), relogin=lambda: True) is True  # type:ignore[arg-type]
+        assert roast_flow.awaiting_count() == 2
+        env.changed.assert_called()
+
+    def test_an_expired_login_asks_to_log_in_again(self, env:Env) -> None:  # noqa: ARG002
+        FakeWeighDialog.script = [{'need_login': True}]
+        relogin = MagicMock(return_value=True)
+        assert roast_flow.open_awaiting(FakeAw(), relogin=relogin) is False  # type:ignore[arg-type]
+        relogin.assert_called_once()

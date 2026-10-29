@@ -170,10 +170,11 @@ def roaster_env(session:MagicMock) -> object:  # noqa: ARG001
          patch.object(gate, 'LeaseManager') as manager_cls, \
          patch.object(gate.erp_realtime, 'is_available', return_value=False), \
          patch.object(gate.roast_flow, 'resume_if_any') as resume, \
+         patch.object(gate.roast_flow, 'refresh_awaiting') as refresh_awaiting, \
          patch.object(gate, '_start_uploads') as start_uploads, \
          patch.object(gate.erp_banner, 'install') as install:
         install.return_value = MagicMock()
-        yield SimpleNamespace(manager_cls=manager_cls, install=install, resume=resume, start_uploads=start_uploads)
+        yield SimpleNamespace(manager_cls=manager_cls, install=install, resume=resume, start_uploads=start_uploads, refresh_awaiting=refresh_awaiting)
     gate._reset_state()  # pylint: disable=protected-access
 
 
@@ -703,3 +704,41 @@ class TestNoFreeze:
         with patch.object(gate, 'confirm_logout', return_value=True):
             assert gate.logout(aw) is True
         session.clear.assert_called()
+
+
+class TestAwaitingWeigh:
+    """The batches finished without a weight: the banner button opens their list, and the count follows the batches."""
+
+    @pytest.fixture(autouse=True)
+    def _fresh_flow(self) -> Generator[None, None, None]:
+        gate._reset_state()  # pylint: disable=protected-access
+        gate.roast_flow._reset_state()  # pylint: disable=protected-access
+        yield
+        gate._reset_state()  # pylint: disable=protected-access
+        gate.roast_flow._reset_state()  # pylint: disable=protected-access
+
+    def test_choosing_a_roaster_asks_how_many_batches_wait_for_a_weight(self, aw:MagicMock, roaster_env:SimpleNamespace) -> None:
+        FakeDialog.script = [{'accept': True, 'claim': _claim(), 'roaster': _roaster()}]
+        gate.require_roaster(aw)
+        roaster_env.refresh_awaiting.assert_called_once_with()
+
+    def test_the_banner_button_opens_the_list_and_can_log_in_again(self, aw:MagicMock, roaster_env:SimpleNamespace) -> None:
+        FakeDialog.script = [{'accept': True, 'claim': _claim(), 'roaster': _roaster()}]
+        gate.require_roaster(aw)
+        bar = roaster_env.install.return_value
+        (slot,), _ = bar.weigh_pending.connect.call_args
+        with patch.object(gate.roast_flow, 'open_awaiting') as opened:
+            slot()
+        args, kwargs = opened.call_args
+        assert args == (aw,)
+        with patch.object(gate, 'require_login', return_value=True) as login:
+            kwargs['relogin']()
+        login.assert_called_once_with(aw)
+
+    def test_a_change_updates_the_count_on_the_banner(self, aw:MagicMock, roaster_env:SimpleNamespace) -> None:
+        FakeDialog.script = [{'accept': True, 'claim': _claim(), 'roaster': _roaster()}]
+        gate.require_roaster(aw)
+        bar = roaster_env.install.return_value
+        gate.roast_flow._flow.awaiting = 4  # pylint: disable=protected-access
+        gate._on_batch_changed()  # pylint: disable=protected-access
+        bar.set_awaiting.assert_called_with(4)

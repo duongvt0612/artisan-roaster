@@ -34,6 +34,8 @@ class FakeApi:
         self.calls.append({'round_id': round_id, **kw})
         if self.error is not None:
             raise self.error
+        if kw.get('pending'):
+            return FinishedRound(round_id, 3, 0.0, 32.0, 0.0, False, 0.0, pending=True)
         return FinishedRound(round_id, 3, kw['output_kg'], 32.0, 25.0, True, 15.0)
 
 
@@ -175,3 +177,46 @@ class TestDialog:
         d = make(qapp, FakeApi())
         d.later_button.click()
         assert not d.isVisible() and d.result_round is None and not d.already_over
+
+
+class TestNotWeighedYet:
+    """'Chưa cân được': the beans are still cooling. The batch ends without a weight, the roaster is free and the weight is given later."""
+
+    def test_the_button_is_there_and_needs_no_weight(self, qapp:QApplication) -> None:
+        d = make(qapp, FakeApi())
+        assert d.pending_button.text() == 'Chưa cân được' and d.pending_button.isEnabled()
+        assert not d.finish_button.isEnabled()  # the weight is still never assumed for the normal button
+        labels = ' '.join(label.text() for label in d.findChildren(finish_dialog.QLabel))
+        assert 'chờ cân' in labels  # says what happens: the batch waits for its weight, the roaster is free
+
+    def test_sends_the_flag_and_no_weight(self, qapp:QApplication) -> None:
+        api = FakeApi()
+        d = make(qapp, api, powder_color='#85')
+        d.spin.setValue(30)  # typed but not trusted: the operator chose "not weighed yet"
+        d.notesEdit.setText(' nguội ')
+        d.pending_button.click()
+        _wait(qapp, lambda: d.result_round is not None)
+        assert api.calls == [{'round_id': 'r1', 'output_kg': None, 'notes': 'nguội', 'powder_color': '#85', 'pending': True}]
+        assert d.result_round is not None and d.result_round.pending and not d.isVisible()
+
+    def test_buttons_are_locked_while_sending(self, qapp:QApplication) -> None:
+        d = make(qapp, FakeApi())
+        d.busy = True
+        d._update()  # pylint: disable=protected-access
+        assert not d.pending_button.isEnabled() and not d.finish_button.isEnabled()
+
+    def test_a_network_error_keeps_the_dialog_and_the_buttons(self, qapp:QApplication) -> None:
+        api = FakeApi()
+        api.error = roasters.RoasterUnavailable('network', 'x')
+        d = make(qapp, api)
+        d.pending_button.click()
+        _wait(qapp, d.errorLabel.isVisible)
+        assert d.isVisible() and 'mạng' in d.errorLabel.text() and d.pending_button.isEnabled() and d.result_round is None
+
+    def test_not_running_any_more_closes_telling_the_caller(self, qapp:QApplication) -> None:
+        api = FakeApi()
+        api.error = rounds.RoundNotRunning('xong rồi')
+        d = make(qapp, api)
+        d.pending_button.click()
+        _wait(qapp, lambda: d.already_over)
+        assert d.already_over and d.result_round is None and not d.isVisible()
