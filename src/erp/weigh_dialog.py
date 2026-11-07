@@ -32,7 +32,7 @@ from PyQt6.QtWidgets import (QApplication, QDoubleSpinBox, QFrame, QHBoxLayout, 
     QPushButton, QVBoxLayout, QWidget)
 
 from artisanlib.dialogs import ArtisanDialog
-from erp import roasters, rounds
+from erp import numfmt, roasters, rounds
 from erp.finish_dialog import MAX_OUTPUT_KG, deviation_percent, loss_text
 from erp.login import build_stylesheet
 from erp.rounds import AwaitingRound, FinishedRound
@@ -208,6 +208,7 @@ class WeighPendingDialog(ArtisanDialog):
         self.spin.setRange(0.0, MAX_OUTPUT_KG)
         self.spin.setSingleStep(0.1)
         self.spin.setSuffix(' kg')
+        numfmt.guard_number_spin(self.spin)  # "." decimals / "," thousands, typed "," and paste refused
         self.spin.setValue(0.0)
         self.spin.setAccessibleName(QApplication.translate('ERP', 'Số kg thành phẩm'))
         self.spin.valueChanged.connect(lambda *_: self._update_loss())
