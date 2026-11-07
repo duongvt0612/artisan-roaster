@@ -77,7 +77,7 @@ class TestLossText:
 
     def test_text_says_loss_deviation_and_limit(self, qapp:QApplication) -> None:  # noqa: ARG002
         text, _bad = finish_dialog.loss_text(40, 29.6, 32, 5)
-        assert 'Hao hụt: 26%' in text and '-7,5%' in text.replace('.', ',') and '±5%' in text
+        assert 'Hao hụt: 26%' in text and '-7.5%' in text and '±5%' in text
 
     def test_no_limit_means_never_red(self, qapp:QApplication) -> None:  # noqa: ARG002
         text, bad = finish_dialog.loss_text(40, 20, 32, 0)
@@ -111,6 +111,8 @@ class TestDialog:
     def test_loss_follows_the_typed_weight_and_turns_red(self, qapp:QApplication) -> None:
         d = make(qapp, FakeApi())
         assert not d.lossLabel.isVisibleTo(d)
+        # Ô số theo quy ước ERP (05/11/2026): locale cố định en-US, hiện dấu "," ngăn nghìn.
+        assert d.spin.locale().name() == 'en_US' and d.spin.isGroupSeparatorShown()
         d.spin.setValue(30)   # expected 32 kg, tolerance 15 %: -6.25 % is inside
         assert d.lossLabel.isVisibleTo(d) and d.lossLabel.property('bad') is False and d.finish_button.isEnabled()
         d.spin.setValue(26)   # -18.75 %

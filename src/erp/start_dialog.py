@@ -26,13 +26,13 @@ import threading
 from collections.abc import Callable
 from typing import Any, Final, TYPE_CHECKING, override
 
-from PyQt6.QtCore import QLocale, QObject, QTimer, Qt, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QObject, QTimer, Qt, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QKeySequence, QPalette
 from PyQt6.QtWidgets import (QApplication, QDoubleSpinBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
     QPushButton, QVBoxLayout, QWidget)
 
 from artisanlib.dialogs import ArtisanDialog
-from erp import device, roasters, rounds
+from erp import device, numfmt, roasters, rounds
 from erp.login import build_stylesheet
 from erp.rounds import RoastCommand, RoundInput, StartedRound
 
@@ -50,13 +50,9 @@ FINE_SPIN_DECIMALS: Final[int] = 4  # a 'whole pack only' item is typed with 4
 
 
 def format_kg(value:float) -> str:
-    """'120', '80,5', '0,0004': up to 4 decimals without trailing zeros, in the decimal separator of the user's locale."""
-    locale = QLocale()
-    text = locale.toString(float(round(value, KG_DECIMALS)), 'f', KG_DECIMALS)
-    sep = locale.decimalPoint()
-    if sep in text:
-        text = text.rstrip('0').rstrip(sep)
-    return text
+    """'120', '80.5', '1,234.5', '0.0004': up to 4 decimals without trailing zeros, in the ERP number format ("." decimals,
+    "," thousands — not the machine locale, see erp.numfmt)."""
+    return numfmt.format_number(value, KG_DECIMALS)
 
 
 def command_title(c:RoastCommand) -> str:
@@ -436,6 +432,7 @@ class StartRoundDialog(ArtisanDialog):
         spin.setRange(0.0, max(inp.kg, 0.0))
         spin.setSingleStep(0.0001 if inp.whole_pack_only else 0.5)
         spin.setSuffix(' kg')
+        numfmt.guard_number_spin(spin)  # "." decimals / "," thousands, typed "," and paste refused
         spin.setValue(min(value, inp.kg))
         spin.setMinimumWidth(150)
         spin.setAccessibleName(QApplication.translate('ERP', 'Số kg {0}').format(inp.name or inp.code))

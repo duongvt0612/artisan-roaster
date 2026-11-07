@@ -125,6 +125,8 @@ class TestList:
         d = make(qapp, api)
         d.results.setCurrentRow(1)
         d.spin.setValue(29.5)
+        # Ô số theo quy ước ERP (05/11/2026): locale cố định en-US, hiện dấu "," ngăn nghìn.
+        assert d.spin.locale().name() == 'en_US' and d.spin.isGroupSeparatorShown()
         api.items.append(awaiting(3))
         calls = api.list_calls
         d.refresh_button.click()

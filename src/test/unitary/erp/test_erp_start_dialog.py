@@ -85,9 +85,10 @@ class TestFineInputs:
         return cmd('1', 'LS-1', inputs=(RoundInput('film', 'FILM', 'Màng lọc', 'kg', 12.4996, True), RoundInput('g-1', 'NX-A', 'Nhân A', 'kg', 55.5)))
 
     def test_format_kg_shows_up_to_four_decimals(self, qapp:QApplication) -> None:  # noqa: ARG002
-        assert start_dialog.format_kg(0.0004) in ('0,0004', '0.0004')
-        assert start_dialog.format_kg(12.4996) in ('12,4996', '12.4996')
-        assert start_dialog.format_kg(7.35) in ('7,35', '7.35')
+        assert start_dialog.format_kg(0.0004) == '0.0004'
+        assert start_dialog.format_kg(12.4996) == '12.4996'
+        assert start_dialog.format_kg(7.35) == '7.35'
+        assert start_dialog.format_kg(1234.5) == '1,234.5'
         assert start_dialog.format_kg(0.00004) == '0'
 
     def test_fine_input_has_four_decimal_spin_and_others_keep_three(self, qapp:QApplication) -> None:
@@ -95,11 +96,14 @@ class TestFineInputs:
         pick(qapp, d, '1')
         fine, plain = d._spins[0][1], d._spins[1][1]  # pylint: disable=protected-access
         assert (fine.decimals(), plain.decimals()) == (4, 3)
+        # Ô số theo quy ước ERP (05/11/2026): locale cố định en-US, hiện dấu "," ngăn nghìn, không có menu dán.
+        assert fine.locale().name() == 'en_US' and fine.isGroupSeparatorShown()
+        assert plain.contextMenuPolicy() == start_dialog.Qt.ContextMenuPolicy.NoContextMenu
         assert fine.singleStep() == 0.0001
         fine.setValue(0.0004)
         assert fine.value() == 0.0004 and d.start_button.isEnabled()
         assert d.total_kg() == 0.0004
-        assert '0,0004' in d.totalLabel.text() or '0.0004' in d.totalLabel.text()
+        assert '0.0004' in d.totalLabel.text()
 
     def test_the_fine_kg_are_sent_to_the_erp_untouched(self, qapp:QApplication) -> None:
         api = FakeApi([self._fine_command()])
@@ -115,11 +119,12 @@ class TestFineInputs:
 class TestHelpers:
     def test_title_says_what_is_produced_and_how_many_kg(self, qapp:QApplication) -> None:  # noqa: ARG002
         assert start_dialog.command_title(cmd('1', 'LS-1026-000123', name='Arabica Cầu Đất rang', target=120)) == 'LS-1026-000123 · Arabica Cầu Đất rang · 120 kg'
-        assert start_dialog.command_title(cmd('1', 'LS-1', target=0.125)).endswith('· 0,125 kg') or start_dialog.command_title(cmd('1', 'LS-1', target=0.125)).endswith('· 0.125 kg')
+        assert start_dialog.command_title(cmd('1', 'LS-1', target=0.125)).endswith('· 0.125 kg')
+        assert start_dialog.command_title(cmd('1', 'LS-1', target=1500)).endswith('· 1,500 kg')
 
     def test_format_kg_trims_zeros(self, qapp:QApplication) -> None:  # noqa: ARG002
         assert start_dialog.format_kg(120.0) == '120'
-        assert start_dialog.format_kg(80.5) in ('80,5', '80.5')
+        assert start_dialog.format_kg(80.5) == '80.5'
         assert start_dialog.format_kg(0) == '0'
 
     def test_orders_text(self, qapp:QApplication) -> None:  # noqa: ARG002

@@ -31,7 +31,7 @@ from PyQt6.QtGui import QPalette
 from PyQt6.QtWidgets import QApplication, QDoubleSpinBox, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
 
 from artisanlib.dialogs import ArtisanDialog
-from erp import roasters, rounds
+from erp import numfmt, roasters, rounds
 from erp.batch import Batch, loss_percent
 from erp.login import build_stylesheet
 from erp.rounds import FinishedRound
@@ -146,6 +146,7 @@ class FinishRoundDialog(ArtisanDialog):
         self.spin.setRange(0.0, MAX_OUTPUT_KG)
         self.spin.setSingleStep(0.1)
         self.spin.setSuffix(' kg')
+        numfmt.guard_number_spin(self.spin)  # "." decimals / "," thousands, typed "," and paste refused
         self.spin.setValue(0.0)
         self.spin.setAccessibleName(QApplication.translate('ERP', 'Số kg thành phẩm'))
         self.spin.valueChanged.connect(lambda *_: self._update())
