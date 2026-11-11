@@ -3,6 +3,7 @@
 import os
 import time
 from collections.abc import Generator
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import MagicMock
@@ -11,7 +12,7 @@ import pytest
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from PyQt6.QtWidgets import QApplication  # noqa: E402
+from PyQt6.QtWidgets import QApplication, QLabel  # noqa: E402
 
 from erp import roasters, rounds, start_dialog  # noqa: E402
 from erp.rounds import RoastCommand, RoundInput, SaleOrder, StartedRound  # noqa: E402
@@ -31,9 +32,11 @@ class FakeApi:
         self.search_error:Exception|None = None
         self.start_error:Exception|None = None
         self.start_calls:list[dict[str, Any]] = []
+        self.include_empty:list[bool] = []
 
-    def search_commands(self, query:str, limit:int = 20) -> list[RoastCommand]:
+    def search_commands(self, query:str, limit:int = 20, include_empty:bool = False) -> list[RoastCommand]:
         self.queries.append(query)
+        self.include_empty.append(include_empty)
         if self.search_error is not None:
             raise self.search_error
         q = query.strip().lower()
@@ -135,8 +138,16 @@ class TestHelpers:
         assert start_dialog.orders_text(cmd('1', 'LS', request='YC-5')) == 'YC-5'
 
     def test_detail_line(self, qapp:QApplication) -> None:  # noqa: ARG002
-        text = start_dialog.command_detail(cmd('1', 'LS', remaining=80, orders=(SaleOrder('SO-7', 'Khách A'),)))
-        assert text == 'Còn lại 80 kg · SO-7 (Khách A)'
+        c = replace(cmd('1', 'LS', target=3.18, remaining=1.98, orders=(SaleOrder('SO-7', 'Khách A'),)),
+                    input_exported_kg=3.75, input_used_kg=1.2, input_remaining_kg=2.55)
+        assert start_dialog.command_detail(c) == ('Đầu ra: mục tiêu 3.18 · đã ra 1.2 · còn 1.98 kg\n'
+                                                  'Nhân: đã xuất 3.75 · đã dùng 1.2 · còn 2.55 kg\n'
+                                                  'SO-7 (Khách A)')
+        assert '\n' not in start_dialog.accessible_text(c)
+
+    def test_detail_line_without_exported_beans(self, qapp:QApplication) -> None:  # noqa: ARG002
+        text = start_dialog.command_detail(cmd('1', 'LS', target=5, remaining=5, request=''))
+        assert text == 'Đầu ra: mục tiêu 5 · đã ra 0 · còn 5 kg\nNhân: chưa xuất kho'
 
     def test_badges_are_words(self, qapp:QApplication) -> None:  # noqa: ARG002
         assert start_dialog.command_badge(cmd('1', 'LS', kind='test'))[0] == 'test'
@@ -271,12 +282,59 @@ class TestPick:
         assert d._spins == [] and not d.start_button.isEnabled()  # pylint: disable=protected-access
 
     def test_warns_above_the_roaster_capacity(self, qapp:QApplication) -> None:
-        d = make(qapp, FakeApi([cmd('1', 'LS-1')]), capacity_kg=10.0)
+        d = make(qapp, FakeApi([cmd('1', 'LS-1')]), capacity_kg=10.0, max_kg=12.0)
         pick(qapp, d, '1')
-        d._spins[0][1].setValue(12)  # pylint: disable=protected-access
-        assert d.warnLabel.isVisibleTo(d) and 'công suất' in d.warnLabel.text()
+        d._spins[0][1].setValue(11)  # pylint: disable=protected-access
+        assert d.warnLabel.isVisibleTo(d) and 'dung sai' in d.warnLabel.text() and d.start_button.isEnabled()
         d._spins[0][1].setValue(8)  # pylint: disable=protected-access
         assert not d.warnLabel.isVisibleTo(d)
+
+    # Phản hồi xưởng 11/11/2026: máy 1.2 kg nhồi được tới 1.3 kg (dung sai 0.1): vượt 1.3 thì không cho bắt đầu.
+    def test_blocks_above_capacity_plus_tolerance(self, qapp:QApplication) -> None:
+        d = make(qapp, FakeApi([cmd('1', 'LS-1')]), capacity_kg=1.2, max_kg=1.3)
+        pick(qapp, d, '1')
+        d._spins[0][1].setValue(1.3)  # pylint: disable=protected-access
+        assert d.start_button.isEnabled() and not d.over_max()
+        d._spins[0][1].setValue(1.301)  # pylint: disable=protected-access
+        assert d.over_max() and not d.start_button.isEnabled()
+        assert d.warnLabel.isVisibleTo(d) and '1.3 kg' in d.warnLabel.text() and d.warnLabel.property('level') == 'block'
+
+    def test_without_tolerance_the_capacity_is_the_maximum(self, qapp:QApplication) -> None:
+        d = make(qapp, FakeApi([cmd('1', 'LS-1')]), capacity_kg=1.2)
+        pick(qapp, d, '1')
+        d._spins[0][1].setValue(1.25)  # pylint: disable=protected-access
+        assert d.over_max() and not d.start_button.isEnabled()
+
+    def test_an_unknown_capacity_never_blocks(self, qapp:QApplication) -> None:
+        d = make(qapp, FakeApi([cmd('1', 'LS-1')]))
+        pick(qapp, d, '1')
+        d._spins[0][1].setValue(50)  # pylint: disable=protected-access
+        assert not d.over_max() and d.start_button.isEnabled() and not d.warnLabel.isVisibleTo(d)
+
+    def test_capacity_refused_by_the_erp_is_shown(self, qapp:QApplication) -> None:
+        api = FakeApi([cmd('1', 'LS-1')])
+        api.start_error = rounds.CapacityExceeded('Tổng 1.4 kg nhân vượt mức tối đa 1.3 kg của Máy 1kg')
+        d = make(qapp, api)
+        pick(qapp, d, '1')
+        d._spins[0][1].setValue(1.4)  # pylint: disable=protected-access
+        d._start()  # pylint: disable=protected-access
+        _wait(qapp, lambda: d.errorLabel.isVisible())
+        assert 'vượt mức tối đa' in d.errorLabel.text() and d.started is None
+
+    def test_the_input_hint_shows_exported_used_and_left(self, qapp:QApplication) -> None:
+        bean = RoundInput('g-1', 'NX-A', 'Nhân A', 'kg', 2.55, exported_kg=3.75, used_kg=1.2)
+        d = make(qapp, FakeApi([cmd('1', 'LS-1', inputs=(bean,))]))
+        pick(qapp, d, '1')
+        texts = [w.text() for w in d.inputsBox.findChildren(QLabel)]
+        assert 'Đã xuất 3.75 · đã dùng 1.2 · còn 2.55 kg' in texts
+
+    def test_show_empty_commands_switch_searches_again(self, qapp:QApplication) -> None:
+        api = FakeApi([cmd('1', 'LS-1')])
+        d = make(qapp, api)
+        assert api.include_empty[-1] is False and not d.show_empty.isChecked()
+        d.show_empty.setChecked(True)
+        _wait(qapp, lambda: len(api.include_empty) >= 2)
+        assert api.include_empty[-1] is True
 
     def test_the_kg_typed_survive_a_new_search(self, qapp:QApplication) -> None:
         api = FakeApi([cmd('1', 'LS-1', name='Arabica'), cmd('2', 'LS-2', name='Arabica 2')])

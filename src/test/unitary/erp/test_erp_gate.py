@@ -153,8 +153,9 @@ class FakeDialog:
         self.refreshed += 1
 
 
-def _roaster(rid:str = 'eq1', name:str = 'Máy Rang Nhỏ', capacity:str|None = '15.00', unit:str|None = 'kg') -> SimpleNamespace:
-    return SimpleNamespace(id=rid, name=name, code='ROAST-01', capacity=capacity, capacity_unit=unit)
+def _roaster(rid:str = 'eq1', name:str = 'Máy Rang Nhỏ', capacity:str|None = '15.00', unit:str|None = 'kg',
+             tolerance:str|None = None) -> SimpleNamespace:
+    return SimpleNamespace(id=rid, name=name, code='ROAST-01', capacity=capacity, capacity_unit=unit, capacity_tolerance=tolerance)
 
 
 def _claim() -> SimpleNamespace:
@@ -389,6 +390,12 @@ class TestRoastBatch:
     def test_capacity_of_the_chosen_roaster(self, capacity:str|None, unit:str|None, expected:float|None) -> None:
         assert gate._capacity_kg(_roaster(capacity=capacity, unit=unit)) == expected  # pylint: disable=protected-access
 
+    @pytest.mark.parametrize(('capacity', 'tolerance', 'expected'), [
+        ('1.20', '0.10', 1.3), ('1.2', None, 1.2), ('1.2', '0', 1.2), ('1.2', 'abc', 1.2), ('1.2', '-1', 1.2), (None, '0.1', None),
+    ])
+    def test_max_kg_is_capacity_plus_tolerance(self, capacity:str|None, tolerance:str|None, expected:float|None) -> None:
+        assert gate._max_kg(_roaster(capacity=capacity, tolerance=tolerance)) == expected  # pylint: disable=protected-access
+
     def test_adopting_a_roaster_remembers_its_capacity(self, aw:MagicMock, roaster_env:SimpleNamespace) -> None:  # noqa: ARG002
         FakeDialog.script = [{'accept': True, 'claim': _claim(), 'roaster': _roaster(capacity='12.5')}]
         gate.require_roaster(aw)
@@ -400,7 +407,7 @@ class TestRoastBatch:
         with patch.object(gate.roast_flow, 'before_start', return_value=True) as flow:
             assert gate.before_start(aw) is True
         args, kwargs = flow.call_args
-        assert args == (aw, roaster_env.manager_cls.return_value) and kwargs['capacity_kg'] == 12.5
+        assert args == (aw, roaster_env.manager_cls.return_value) and kwargs['capacity_kg'] == 12.5 and kwargs['max_kg'] == 12.5
         with patch.object(gate, 'require_login', return_value=True) as login:
             kwargs['relogin']()
         login.assert_called_once_with(aw)

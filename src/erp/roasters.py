@@ -98,6 +98,8 @@ class Roaster:
     version:int
     mine:bool            # held by this user (in any session)
     held_by_session:bool # held by exactly this run of Artisan
+    # How much more than `capacity` the roaster really takes (same unit, as text like capacity): the most of one batch is capacity + this.
+    capacity_tolerance:str|None = None
 
     @property
     def is_free(self) -> bool:
@@ -202,6 +204,7 @@ def _roaster(item:Any) -> Roaster|None:
             held_by = Holder(str(raw.get('userId') or ''), str(raw.get('fullName') or ''), str(raw.get('deviceName') or ''), _dt(raw.get('since')))
         capacity = item.get('capacity')
         unit = item.get('capacityUnit')
+        tolerance = item.get('capacityTolerance')
         return Roaster(
             id=roaster_id,
             code=str(item.get('code') or ''),
@@ -213,6 +216,7 @@ def _roaster(item:Any) -> Roaster|None:
             version=int(item.get('version') or 0),
             mine=bool(item.get('mine')),
             held_by_session=bool(item.get('heldBySession')),
+            capacity_tolerance=str(tolerance) if tolerance is not None else None,
         )
     except (KeyError, TypeError, ValueError, AttributeError):
         _log.info('skipping a malformed roaster entry')

@@ -163,6 +163,7 @@ class _State:
         self.banner:erp_banner.LeaseBanner|None = None
         self.bridge:_Bridge|None = None
         self.capacity_kg:float|None = None  # what the chosen roaster can take in one batch, None if the ERP does not know
+        self.max_kg:float|None = None       # the most it really takes: capacity + tolerance (START is refused above it)
         self.queue:UploadQueue|None = None   # the files of finished batches that are waiting for the ERP
         self.uploader:Uploader|None = None   # and the thread that sends them
         self.quit_confirmed:bool = False    # the operator already agreed to quit with a batch still open (logging out asks first)
@@ -315,6 +316,18 @@ def _capacity_kg(roaster:Roaster) -> float|None:
     return value if value > 0 else None
 
 
+def _max_kg(roaster:Roaster) -> float|None:
+    """The most one batch may weigh on this roaster: its capacity plus its tolerance (a small roaster of 1.2 kg takes 1.3 kg). None if unknown."""
+    capacity = _capacity_kg(roaster)
+    if capacity is None:
+        return None
+    try:
+        tolerance = float(roaster.capacity_tolerance) if roaster.capacity_tolerance else 0.0
+    except ValueError:
+        tolerance = 0.0
+    return round(capacity + max(tolerance, 0.0), 4)
+
+
 def _ensure_bridge() -> _Bridge:
     if _state.bridge is None:
         _state.bridge = _Bridge()
@@ -392,6 +405,7 @@ def _adopt(roaster:Roaster, claim:Claim) -> None:
         manager.add_listener(bridge.state_changed.emit)
     _state.manager = manager
     _state.capacity_kg = _capacity_kg(roaster)
+    _state.max_kg = _max_kg(roaster)
     manager.start()
     if _state.banner is not None:
         _state.banner.apply(LeaseState.HELD, manager.roaster_name, '')
@@ -473,7 +487,7 @@ def release_roaster(timeout:float = RELEASE_WAIT_SECONDS) -> None:
 
 def before_start(aw:'ApplicationWindow') -> bool:
     """START was pressed: the operator picks the production command and the ERP creates the batch. False: do not start recording."""
-    return roast_flow.before_start(aw, _state.manager, capacity_kg=_state.capacity_kg, relogin=lambda: require_login(aw))
+    return roast_flow.before_start(aw, _state.manager, capacity_kg=_state.capacity_kg, max_kg=_state.max_kg, relogin=lambda: require_login(aw))
 
 
 def recording_started(aw:'ApplicationWindow') -> None:
