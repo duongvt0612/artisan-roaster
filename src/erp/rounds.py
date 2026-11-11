@@ -40,6 +40,10 @@ class QuotaExceeded(RoasterError):
     """More beans declared than what is left, or beans that do not belong to the command (QUOTA_EXCEEDED)."""
 
 
+class CapacityExceeded(RoasterError):
+    """The beans of the batch weigh more than the roaster takes, its capacity plus its tolerance (CAPACITY_EXCEEDED)."""
+
+
 class NotRoastable(RoasterError):
     """The command or its roasting step is finished, cancelled or not a roasting one (COMMAND_NOT_ROASTABLE)."""
 
@@ -63,6 +67,7 @@ class FileRejected(RoasterError):
 _CONFLICTS:Final[dict[str, type[RoasterError]]] = {
     'ROASTER_BUSY': RoasterBusy,
     'QUOTA_EXCEEDED': QuotaExceeded,
+    'CAPACITY_EXCEEDED': CapacityExceeded,
     'COMMAND_NOT_ROASTABLE': NotRoastable,
     'ROUND_NOT_RUNNING': RoundNotRunning,
     'ROUND_NOT_AWAITING_WEIGH': RoundNotAwaiting,
@@ -82,6 +87,9 @@ class RoundInput:
     kg:float
     # Green coffee of a 'whole pack only' item (film, ...): used down to 0.0001 kg, so the dialog types 4 decimals for it.
     whole_pack_only:bool = False
+    # Search only: what was exported for the command and what its batches used already (0 from an ERP that does not send them).
+    exported_kg:float = 0.0
+    used_kg:float = 0.0
 
 
 @dataclass(frozen=True)
@@ -106,6 +114,10 @@ class RoastCommand:
     request_code:str
     sale_orders:tuple[SaleOrder, ...]
     inputs:tuple[RoundInput, ...]
+    # All the green coffee of the command, the kinds used up included: exported, used by its batches, left.
+    input_exported_kg:float = 0.0
+    input_used_kg:float = 0.0
+    input_remaining_kg:float = 0.0
 
     @property
     def is_test(self) -> bool:
@@ -215,7 +227,7 @@ def _dt(value:Any) -> datetime|None:
 
 def _input(item:Any, key:str) -> RoundInput:
     return RoundInput(_text(item['inventoryId']), _text(item.get('code')), _text(item.get('name')), _text(item.get('unit')), _num(item.get(key)),
-                      item.get('wholePackOnly') is True)
+                      item.get('wholePackOnly') is True, exported_kg=_num(item.get('exportedKg')), used_kg=_num(item.get('usedKg')))
 
 
 def _command(item:Any) -> RoastCommand|None:
@@ -237,6 +249,9 @@ def _command(item:Any) -> RoastCommand|None:
             request_code=_text(source.get('requestCode')),
             sale_orders=tuple(SaleOrder(_text(o.get('orderNumber')), _text(o.get('customerName'))) for o in (source.get('saleOrders') or [])),
             inputs=tuple(_input(i, 'availableKg') for i in (item.get('inputs') or [])),
+            input_exported_kg=_num(item.get('inputExportedKg')),
+            input_used_kg=_num(item.get('inputUsedKg')),
+            input_remaining_kg=_num(item.get('inputRemainingKg')),
         )
     except (KeyError, TypeError, ValueError, AttributeError):
         _log.info('skipping a malformed roasting command')
@@ -247,10 +262,13 @@ def _bad_reply() -> RoasterError:
     return RoasterUnavailable('server', 'Phản hồi của ERP không đúng định dạng')
 
 
-def search_commands(query:str, limit:int = 20) -> list[RoastCommand]:
-    """The roasting commands that can still be roasted whose code, output, request, sale order or customer match `query`."""
-    data = request('GET', f'{config.get_artisan_url()}/roasting-commands', params={'q': query.strip(), 'limit': limit},
-                   conflicts=_CONFLICTS)
+def search_commands(query:str, limit:int = 20, include_empty:bool = False) -> list[RoastCommand]:
+    """The roasting commands that can still be roasted whose code, output, request, sale order or customer match `query`.
+    The ERP leaves out the commands without green coffee left (never exported, or used up) unless `include_empty`."""
+    params:dict[str, Any] = {'q': query.strip(), 'limit': limit}
+    if include_empty:
+        params['includeEmpty'] = 'true'
+    data = request('GET', f'{config.get_artisan_url()}/roasting-commands', params=params, conflicts=_CONFLICTS)
     if not isinstance(data, list):
         raise _bad_reply()
     return [c for c in (_command(item) for item in data) if c is not None]

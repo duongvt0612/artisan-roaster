@@ -84,6 +84,27 @@ class TestSearch:
         c = rounds.search_commands('')[0]
         assert c.inputs == () and c.sale_orders == () and c.output_unit == 'kg' and c.kind == 'normal'
 
+    def test_parses_what_was_exported_and_used(self, sess:Any) -> None:
+        command = dict(COMMAND, inputExportedKg=130, inputUsedKg=74.5, inputRemainingKg=55.5,
+                       inputs=[{'inventoryId': 'g1', 'code': 'NX-A', 'name': 'Nhân A', 'unit': 'kg', 'availableKg': 55.5, 'exportedKg': 100, 'usedKg': 44.5}])
+        sess.authed_request.return_value = _resp(200, _ok([command]))
+        c = rounds.search_commands('')[0]
+        assert (c.input_exported_kg, c.input_used_kg, c.input_remaining_kg) == (130, 74.5, 55.5)
+        assert (c.inputs[0].exported_kg, c.inputs[0].used_kg, c.inputs[0].kg) == (100, 44.5, 55.5)
+
+    def test_an_older_erp_without_the_totals_reads_zero(self, sess:Any) -> None:
+        sess.authed_request.return_value = _resp(200, _ok([COMMAND]))
+        c = rounds.search_commands('')[0]
+        assert (c.input_exported_kg, c.input_used_kg, c.input_remaining_kg) == (0, 0, 0)
+        assert (c.inputs[0].exported_kg, c.inputs[0].used_kg) == (0, 0)
+
+    def test_include_empty_is_sent_only_when_asked(self, sess:Any) -> None:
+        sess.authed_request.return_value = _resp(200, _ok([]))
+        rounds.search_commands('', 5, include_empty=True)
+        assert sess.authed_request.call_args[1]['params'] == {'q': '', 'limit': 5, 'includeEmpty': 'true'}
+        rounds.search_commands('', 5)
+        assert sess.authed_request.call_args[1]['params'] == {'q': '', 'limit': 5}
+
     def test_not_a_list_is_a_server_error(self, sess:Any) -> None:
         sess.authed_request.return_value = _resp(200, _ok({'x': 1}))
         with pytest.raises(roasters.RoasterUnavailable):

@@ -28,7 +28,7 @@ from typing import Any, Final, TYPE_CHECKING, override
 
 from PyQt6.QtCore import QObject, QTimer, Qt, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QKeySequence, QPalette
-from PyQt6.QtWidgets import (QApplication, QDoubleSpinBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
+from PyQt6.QtWidgets import (QApplication, QCheckBox, QDoubleSpinBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
     QPushButton, QVBoxLayout, QWidget)
 
 from artisanlib.dialogs import ArtisanDialog
@@ -69,13 +69,36 @@ def orders_text(c:RoastCommand) -> str:
     return ', '.join(shown) + (f' +{more}' if more > 0 else '')
 
 
+def output_text(c:RoastCommand) -> str:
+    """'Đầu ra: mục tiêu 3.18 · đã ra 1.2 · còn 1.98 kg'."""
+    return QApplication.translate('ERP', 'Đầu ra: mục tiêu {0} · đã ra {1} · còn {2} kg').format(
+        format_kg(c.target_kg), format_kg(c.produced_kg), format_kg(c.remaining_kg))
+
+
+def beans_text(c:RoastCommand) -> str:
+    """'Nhân: đã xuất 3.75 · đã dùng 1.2 · còn 2.55 kg', or that no green coffee was exported for the command yet."""
+    if c.input_exported_kg <= 0:
+        return QApplication.translate('ERP', 'Nhân: chưa xuất kho')
+    return QApplication.translate('ERP', 'Nhân: đã xuất {0} · đã dùng {1} · còn {2} kg').format(
+        format_kg(c.input_exported_kg), format_kg(c.input_used_kg), format_kg(c.input_remaining_kg))
+
+
 def command_detail(c:RoastCommand) -> str:
-    """The second line of a row: what is left to roast and where the command comes from."""
-    parts = [QApplication.translate('ERP', 'Còn lại {0} kg').format(format_kg(c.remaining_kg))]
+    """The lines under the title of a row (feedback of the roastery, 11/11/2026: the roaster checks the whole picture before choosing):
+    the output to make, the green coffee exported / used / left, and where the command comes from."""
+    lines = [output_text(c), beans_text(c)]
     source = orders_text(c)
     if source:
-        parts.append(source)
-    return ' · '.join(parts)
+        lines.append(source)
+    return '\n'.join(lines)
+
+
+def input_hint(inp:RoundInput) -> str:
+    """'Đã xuất 3.75 · đã dùng 1.2 · còn 2.55 kg' of one green coffee; only what is left when the ERP does not send the rest."""
+    if inp.exported_kg <= 0:
+        return QApplication.translate('ERP', 'Khả dụng: {0} kg').format(format_kg(inp.kg))
+    return QApplication.translate('ERP', 'Đã xuất {0} · đã dùng {1} · còn {2} kg').format(
+        format_kg(inp.exported_kg), format_kg(inp.used_kg), format_kg(inp.kg))
 
 
 def command_badge(c:RoastCommand) -> tuple[str, str]:
@@ -88,7 +111,7 @@ def command_badge(c:RoastCommand) -> tuple[str, str]:
 
 
 def accessible_text(c:RoastCommand) -> str:
-    return f'{command_title(c)}, {command_detail(c)}, {command_badge(c)[1]}'
+    return f'{command_title(c)}, {command_detail(c).replace(chr(10), ", ")}, {command_badge(c)[1]}'
 
 
 def _css(palette:QPalette) -> str:
@@ -97,6 +120,7 @@ def _css(palette:QPalette) -> str:
     prog_bg, prog_fg = ('#16324f', '#9cc9f5') if dark else ('#e1eefb', '#0f3f73')
     pend_bg, pend_fg = ('#2d2d2d', '#d0d0d0') if dark else ('#ececec', '#3c3c3c')
     warn_bg, warn_fg = ('#4a3510', '#ffd37a') if dark else ('#fdf0d5', '#7a4a00')
+    block_bg, block_fg = ('#4f1d1d', '#ffb4b4') if dark else ('#fde2e2', '#8a1c1c')
     edge, btn, btn_hover = ('#5a5a5a', '#2d2d2d', '#3a3a3a') if dark else ('#c4c4c4', '#ffffff', '#f0f0f0')
     return f"""
         QLabel#erpBadge {{ border-radius: 10px; padding: 3px 10px; font-weight: 600; }}
@@ -105,6 +129,7 @@ def _css(palette:QPalette) -> str:
         QLabel#erpBadge[kind="pending"] {{ background: {pend_bg}; color: {pend_fg}; }}
         QLabel#erpRowName {{ font-size: 14px; font-weight: 600; }}
         QLabel#erpWarn {{ background: {warn_bg}; color: {warn_fg}; border-radius: 6px; padding: 6px 10px; }}
+        QLabel#erpWarn[level="block"] {{ background: {block_bg}; color: {block_fg}; font-weight: 600; }}
         QLabel#erpSection {{ font-weight: 600; }}
         QListWidget {{ border-radius: 6px; padding: 2px; outline: 0; }}
         QListWidget::item {{ border-radius: 6px; padding: 2px; }}
@@ -124,7 +149,7 @@ class _Bridge(QObject):
 class StartRoundDialog(ArtisanDialog):
 
     __slots__ = [
-        'roaster_name', 'capacity_kg', 'started', 'command', 'input_lines', 'need_login', 'busy_with_round', 'lease_lost',
+        'roaster_name', 'capacity_kg', 'max_kg', 'show_empty', 'started', 'command', 'input_lines', 'need_login', 'busy_with_round', 'lease_lost',
         'search_edit', 'refresh_button', 'results', 'statusLabel', 'detail', 'detailTitle', 'inputsBox', 'inputsLayout', 'totalLabel', 'warnLabel', 'errorLabel',
         'start_button', 'cancel_button', 'busy', '_api', '_equipment_id', '_session_id', '_version', '_bridge', '_timer', '_seq', '_spins',
         '_commands', '_wanted_id', '_debounce_ms', '_pending',
@@ -139,6 +164,7 @@ class StartRoundDialog(ArtisanDialog):
         equipment_id:str,
         version:int,
         capacity_kg:float|None = None,
+        max_kg:float|None = None,
         api:Any = rounds,
         session_id:str|None = None,
         debounce_ms:int = SEARCH_DEBOUNCE_MS,
@@ -148,6 +174,8 @@ class StartRoundDialog(ArtisanDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
         self.roaster_name:str = roaster_name
         self.capacity_kg:float|None = capacity_kg
+        # the most one batch may weigh: capacity + tolerance of the roaster; without a tolerance the capacity itself (START refused above it)
+        self.max_kg:float|None = max_kg if max_kg is not None else capacity_kg
         self.started:StartedRound|None = None             # set once the ERP accepted the batch
         self.command:RoastCommand|None = None             # the command of that batch
         self.input_lines:list[tuple[RoundInput, float]] = []  # what was declared: (green coffee, kg)
@@ -200,6 +228,10 @@ class StartRoundDialog(ArtisanDialog):
         search_row.setSpacing(8)
         search_row.addWidget(self.search_edit, 1)
         search_row.addWidget(self.refresh_button)
+        # commands without green coffee left (never exported, or used up) are hidden: the roastery called them clutter (11/11/2026)
+        self.show_empty = QCheckBox(QApplication.translate('ERP', 'Hiện cả lệnh chưa có nhân'))
+        self.show_empty.setToolTip(QApplication.translate('ERP', 'Hiện cả lệnh chưa xuất kho nhân hoặc đã dùng hết nhân'))
+        self.show_empty.toggled.connect(self._search_now)
 
         self.results = QListWidget()
         self.results.setAccessibleName(QApplication.translate('ERP', 'Danh sách lệnh sản xuất'))
@@ -266,6 +298,7 @@ class StartRoundDialog(ArtisanDialog):
         layout.addWidget(label)
         layout.addSpacing(4)
         layout.addLayout(search_row)
+        layout.addWidget(self.show_empty)
         layout.addSpacing(6)
         layout.addWidget(self.results, 1)
         layout.addWidget(self.statusLabel)
@@ -279,7 +312,8 @@ class StartRoundDialog(ArtisanDialog):
         layout.addWidget(self.cancel_button, 0, Qt.AlignmentFlag.AlignHCenter)
 
         self.setTabOrder(self.search_edit, self.refresh_button)
-        self.setTabOrder(self.refresh_button, self.results)
+        self.setTabOrder(self.refresh_button, self.show_empty)
+        self.setTabOrder(self.show_empty, self.results)
         self.setTabOrder(self.results, self.start_button)
         self.setTabOrder(self.start_button, self.cancel_button)
 
@@ -320,7 +354,8 @@ class StartRoundDialog(ArtisanDialog):
         seq = self._seq
         query = self.search_edit.text()
         self.statusLabel.setText(QApplication.translate('ERP', 'Đang tìm…'))
-        self._run('search', seq, lambda: self._api.search_commands(query, SEARCH_LIMIT))
+        include_empty = self.show_empty.isChecked()
+        self._run('search', seq, lambda: self._api.search_commands(query, SEARCH_LIMIT, include_empty=include_empty))
 
     @pyqtSlot(str, int, object, object)
     def _on_done(self, kind:str, seq:int, result:Any, error:Any) -> None:
@@ -355,7 +390,8 @@ class StartRoundDialog(ArtisanDialog):
         self.results.blockSignals(False)
         self._wanted_id = None
         if not self._commands:
-            self.statusLabel.setText(QApplication.translate('ERP', 'Không có lệnh sản xuất nào khớp. Chỉ hiện lệnh rang còn làm được (chờ hoặc đang thực hiện).'))
+            self.statusLabel.setText(QApplication.translate('ERP', 'Không có lệnh sản xuất nào khớp. Chỉ hiện lệnh rang còn làm được (chờ hoặc đang thực hiện) '
+                                                                   'và còn nhân; bật “Hiện cả lệnh chưa có nhân” để xem thêm.'))
         else:
             self.statusLabel.setText(QApplication.translate('ERP', '{0} lệnh. Chọn một lệnh để tiếp tục.').format(len(self._commands)))
         self._on_selected()
@@ -421,7 +457,7 @@ class StartRoundDialog(ArtisanDialog):
         w = QWidget()
         name = QLabel(inp.name or inp.code)
         name.setObjectName('erpRowName')
-        hint = QLabel(QApplication.translate('ERP', 'Khả dụng: {0} kg').format(format_kg(inp.kg)))
+        hint = QLabel(input_hint(inp))
         hint.setObjectName('erpHint')
         left = QVBoxLayout()
         left.setSpacing(0)
@@ -447,18 +483,32 @@ class StartRoundDialog(ArtisanDialog):
     def total_kg(self) -> float:
         return round(sum(spin.value() for _, spin in self._spins), KG_DECIMALS)
 
+    def over_max(self) -> bool:
+        """The beans weigh more than the roaster takes (capacity + tolerance): START is refused, the ERP would refuse it too."""
+        return self.max_kg is not None and self.max_kg > 0 and self.total_kg() > round(self.max_kg, KG_DECIMALS)
+
     def _update_total(self) -> None:
         total = self.total_kg()
         self.totalLabel.setText(QApplication.translate('ERP', 'Tổng cà phê nhân: {0} kg').format(format_kg(total)))
-        over = self.capacity_kg is not None and self.capacity_kg > 0 and total > self.capacity_kg
-        if over and self.capacity_kg is not None:
-            self.warnLabel.setText(QApplication.translate('ERP', 'Vượt công suất của {0} ({1} kg). Kiểm tra lại số kg đã nhập.').format(
-                self.roaster_name, format_kg(self.capacity_kg)))
-        self.warnLabel.setVisible(bool(over))
+        level = ''
+        if self.over_max() and self.max_kg is not None:
+            level = 'block'
+            self.warnLabel.setText(QApplication.translate('ERP', 'Vượt mức tối đa {0} kg của {1}. Giảm số kg nhân để bắt đầu.').format(
+                format_kg(self.max_kg), self.roaster_name))
+        elif self.capacity_kg is not None and self.capacity_kg > 0 and total > round(self.capacity_kg, KG_DECIMALS):
+            level = 'tolerance'
+            self.warnLabel.setText(QApplication.translate('ERP', 'Vượt công suất {0} kg của {1}, vẫn trong dung sai (tối đa {2} kg).').format(
+                format_kg(self.capacity_kg), self.roaster_name, format_kg(self.max_kg if self.max_kg is not None else self.capacity_kg)))
+        self.warnLabel.setProperty('level', level)
+        style = self.warnLabel.style()
+        if style is not None:  # the colour follows the level
+            style.unpolish(self.warnLabel)
+            style.polish(self.warnLabel)
+        self.warnLabel.setVisible(bool(level))
         self._update_buttons()
 
     def _update_buttons(self) -> None:
-        self.start_button.setEnabled(not self.busy and self.command_selected() is not None and self.total_kg() > 0)
+        self.start_button.setEnabled(not self.busy and self.command_selected() is not None and self.total_kg() > 0 and not self.over_max())
 
     # ----- start -----------------------------------------------------------------------------------------------------------
 
@@ -491,6 +541,7 @@ class StartRoundDialog(ArtisanDialog):
         self.busy = busy
         self.search_edit.setEnabled(not busy)
         self.refresh_button.setEnabled(not busy)
+        self.show_empty.setEnabled(not busy)
         self.results.setEnabled(not busy)
         self.inputsBox.setEnabled(not busy)
         self._update_buttons()
@@ -500,7 +551,7 @@ class StartRoundDialog(ArtisanDialog):
     def _start(self, _:bool = False) -> None:
         c = self.command_selected()
         lines = [(inp, spin.value()) for inp, spin in self._spins if spin.value() > 0]
-        if self.busy or c is None or not lines:
+        if self.busy or c is None or not lines or self.over_max():
             return
         self.show_error('')
         self._set_busy(True)

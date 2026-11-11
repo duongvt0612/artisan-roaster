@@ -201,7 +201,8 @@ def _dropped(aw:'ApplicationWindow') -> bool:
 
 # ---- START ------------------------------------------------------------------------------------------------------------------
 
-def before_start(aw:'ApplicationWindow', lease:LeaseManager|None, *, capacity_kg:float|None, relogin:Callable[[], bool]) -> bool:
+def before_start(aw:'ApplicationWindow', lease:LeaseManager|None, *, capacity_kg:float|None, relogin:Callable[[], bool],
+                 max_kg:float|None = None) -> bool:
     """Called when START is pressed, before anything is recorded. True: the batch exists on the ERP, Artisan may record."""
     if _flow.batch is not None:
         # the previous batch was never finished: it has to be, or Artisan loses the weight of those beans
@@ -218,7 +219,7 @@ def before_start(aw:'ApplicationWindow', lease:LeaseManager|None, *, capacity_kg
         return False
 
     dialog = start_dialog.StartRoundDialog(aw, aw, roaster_name=lease.roaster_name, equipment_id=lease.roaster_id, version=lease.version,
-                                           capacity_kg=capacity_kg)
+                                           capacity_kg=capacity_kg, max_kg=max_kg)
     try:
         accepted = bool(dialog.exec())
         started, command, lines = dialog.started, dialog.command, dialog.input_lines
