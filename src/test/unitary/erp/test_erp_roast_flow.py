@@ -778,3 +778,163 @@ class TestAwaiting:
         relogin = MagicMock(return_value=True)
         assert roast_flow.open_awaiting(FakeAw(), relogin=relogin) is False  # type:ignore[arg-type]
         relogin.assert_called_once()
+
+
+class FakeLive:
+    """Records what the flow asks of the live sender (erp.live_stream.LiveStreamer)."""
+
+    def __init__(self) -> None:
+        self.begun:list[tuple[str, str, int, dict[str, Any]]] = []
+        self.offered:list[tuple[list[Any], Any]] = []
+        self.ended = 0
+        self.aborted = 0
+        self._next:int|None = None
+
+    @property
+    def next_seq(self) -> int|None:
+        return self._next
+
+    def begin(self, round_id:str, session_id:str, recording_epoch:int, settings:dict[str, Any]) -> None:
+        self.begun.append((round_id, session_id, recording_epoch, settings))
+        self._next = 0
+
+    def offer(self, samples:list[Any], events:Any) -> None:
+        self.offered.append((samples, events))
+        if samples:
+            self._next = samples[-1][0] + 1
+
+    def end(self) -> None:
+        self.ended += 1
+
+    def abort(self) -> None:
+        self.aborted += 1
+        self._next = None
+
+
+def recording_aw() -> FakeAw:
+    aw = FakeAw()
+    aw.qmc.roastepoch = 1763270000
+    aw.qmc.flagstart = True
+    aw.qmc.delay = 3000
+    aw.qmc.mode = 'C'
+    aw.qmc.deltaBTspan, aw.qmc.deltaETspan = 20, 30
+    aw.qmc.timex, aw.qmc.temp1, aw.qmc.temp2 = [], [], []
+    aw.qmc.extratemp1, aw.qmc.extratemp2 = [[]], [[]]
+    aw.qmc.extraname1, aw.qmc.extraname2 = ['Khí'], ['Trống']
+    aw.qmc.specialevents, aw.qmc.specialeventstype, aw.qmc.specialeventsvalue = [], [], []
+    aw.qmc.etypes = ['Air', 'Drum', 'Damper', 'Burner', '--']
+    return aw
+
+
+def sample(aw:FakeAw, t:float, et:float, bt:float, x1:float = -1, x2:float = -1) -> None:
+    """What Artisan's sampling appends while it records."""
+    aw.qmc.timex.append(t)
+    aw.qmc.temp1.append(et)
+    aw.qmc.temp2.append(bt)
+    aw.qmc.extratemp1[0].append(x1)
+    aw.qmc.extratemp2[0].append(x2)
+
+
+class TestLiveStream:
+    """The samples of the batch's recording are streamed to the ERP while it is recorded (erp.live_stream)."""
+
+    @pytest.fixture
+    def live(self, env:Env) -> Generator[FakeLive, None, None]:  # noqa: ARG002
+        fake = FakeLive()
+        roast_flow.set_live(fake)  # type:ignore[arg-type]
+        yield fake
+        roast_flow.set_live(None)
+
+    def test_recording_a_batch_starts_the_stream(self, env:Env, live:FakeLive) -> None:  # noqa: ARG002
+        FakeStartDialog.script = [accepted_start()]
+        aw = recording_aw()
+        assert start(aw) is True
+        roast_flow.recording_started(aw)  # type:ignore[arg-type]
+        assert len(live.begun) == 1
+        round_id, session, epoch, settings = live.begun[0]
+        assert (round_id, epoch) == ('r1', 1763270000)
+        assert session == roast_flow.device.session_id()  # the session that holds the roaster, not the login token
+        assert settings['samplingIntervalMs'] == 3000 and settings['mode'] == 'C'
+        assert settings['deltaBTspan'] == 20 and settings['deltaETspan'] == 30
+        assert settings['extraNames'] == ['Khí', 'Trống'] and settings['eventTypes'] == ['Air', 'Drum', 'Damper', 'Burner', '--']
+
+    def test_a_recording_without_a_batch_is_not_streamed(self, env:Env, live:FakeLive) -> None:  # noqa: ARG002
+        roast_flow.recording_started(recording_aw())  # type:ignore[arg-type]
+        assert live.begun == []
+
+    def test_each_sample_is_handed_over_once(self, env:Env, live:FakeLive) -> None:  # noqa: ARG002
+        FakeStartDialog.script = [accepted_start()]
+        aw = recording_aw()
+        start(aw)
+        roast_flow.recording_started(aw)  # type:ignore[arg-type]
+        sample(aw, 0.0, 200.0, 150.0, 55.0, -1)
+        sample(aw, 3.0, 201.0, 151.0)
+        roast_flow.live_sample(aw)  # type:ignore[arg-type]
+        sample(aw, 6.0, 202.5, 152.5)
+        roast_flow.live_sample(aw)  # type:ignore[arg-type]
+        first, second = live.offered[0][0], live.offered[1][0]
+        assert first == [(0, 0, 200.0, 150.0, [55.0, -1]), (1, 3000, 201.0, 151.0, [-1, -1])]
+        assert second == [(2, 6000, 202.5, 152.5, [-1, -1])]
+        events = live.offered[1][1]
+        assert events['timeindex'] == [0] * 8 and events['specialevents'] == []
+
+    def test_extra_devices_lagging_behind_give_null(self, env:Env, live:FakeLive) -> None:  # noqa: ARG002
+        FakeStartDialog.script = [accepted_start()]
+        aw = recording_aw()
+        start(aw)
+        roast_flow.recording_started(aw)  # type:ignore[arg-type]
+        aw.qmc.timex, aw.qmc.temp1, aw.qmc.temp2 = [0.0], [200.0], [150.0]  # the extra arrays have no value yet
+        roast_flow.live_sample(aw)  # type:ignore[arg-type]
+        assert live.offered[0][0] == [(0, 0, 200.0, 150.0, [None, None])]
+
+    def test_without_extra_devices_there_is_no_extra(self, env:Env, live:FakeLive) -> None:  # noqa: ARG002
+        FakeStartDialog.script = [accepted_start()]
+        aw = recording_aw()
+        aw.qmc.extratemp1, aw.qmc.extratemp2 = [], []
+        start(aw)
+        roast_flow.recording_started(aw)  # type:ignore[arg-type]
+        aw.qmc.timex, aw.qmc.temp1, aw.qmc.temp2 = [0.0], [200.0], [150.0]
+        roast_flow.live_sample(aw)  # type:ignore[arg-type]
+        assert live.offered[0][0] == [(0, 0, 200.0, 150.0, [])]
+
+    def test_nothing_is_handed_over_when_not_streaming(self, env:Env, live:FakeLive) -> None:  # noqa: ARG002
+        aw = recording_aw()
+        sample(aw, 0.0, 200.0, 150.0)
+        roast_flow.live_sample(aw)  # type:ignore[arg-type]
+        assert live.offered == []
+
+    def test_stopping_the_recording_ends_the_stream(self, env:Env, live:FakeLive) -> None:  # noqa: ARG002
+        roast_flow._flow.batch = a_batch()  # pylint: disable=protected-access
+        FakeFinishDialog.script = [{'finished': FinishedRound('r1', 3, 30.0, 32.0, 25.0, False, 15.0)}]
+        with patch.object(roast_flow.QTimer, 'singleShot', lambda _ms, fn: fn()):
+            roast_flow.roast_stopped(FakeAw())  # type:ignore[arg-type]
+        assert live.ended == 1
+        with patch.object(roast_flow.QTimer, 'singleShot'):
+            roast_flow.roast_stopped(FakeAw())  # type:ignore[arg-type] # the batch was finished meanwhile: the tail still goes
+        assert live.ended == 2
+
+    def test_cancelling_the_batch_on_reset_drops_the_stream(self, env:Env, live:FakeLive) -> None:
+        roast_flow._flow.batch = a_batch()  # pylint: disable=protected-access
+        env.choices, env.reasons = [1], ['rang hỏng']
+        assert roast_flow.before_reset(FakeAw()) is True  # type:ignore[arg-type]
+        assert live.aborted == 1
+
+    def test_keeping_the_batch_on_reset_keeps_the_stream(self, env:Env, live:FakeLive) -> None:
+        roast_flow._flow.batch = a_batch()  # pylint: disable=protected-access
+        env.choices = [0]
+        roast_flow.before_reset(FakeAw())  # type:ignore[arg-type]
+        assert live.aborted == 0
+
+    def test_reset_after_the_batch_was_finished_lets_the_tail_go(self, env:Env, live:FakeLive) -> None:  # noqa: ARG002
+        assert roast_flow.before_reset(FakeAw()) is True  # type:ignore[arg-type]
+        assert live.aborted == 0
+
+    def test_without_a_live_sender_nothing_breaks(self, env:Env) -> None:  # noqa: ARG002
+        FakeStartDialog.script = [accepted_start()]
+        aw = recording_aw()
+        start(aw)
+        roast_flow.recording_started(aw)  # type:ignore[arg-type]
+        sample(aw, 0.0, 200.0, 150.0)
+        roast_flow.live_sample(aw)  # type:ignore[arg-type]
+        with patch.object(roast_flow.QTimer, 'singleShot'):
+            roast_flow.roast_stopped(aw)  # type:ignore[arg-type]

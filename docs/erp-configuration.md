@@ -43,3 +43,12 @@ Mã thiết bị (`deviceId`) là của máy tính nên dùng chung cho mọi m�
 
 Khác `production` thì tiêu đề cửa sổ có thêm `[STAGING]` (tên môi trường viết hoa) và màn hình đăng nhập ghi "MÔI TRƯỜNG STAGING",
 để không ai rang nhầm trên máy chủ thử.
+
+## Gửi dữ liệu mẻ rang trực tiếp lên ERP
+Khi đang ghi một mẻ đã tạo trên ERP, Artisan gửi các mẫu (thời gian, ET, BT, nhiệt độ thiết bị phụ, mốc sự kiện) lên ERP liên tục qua
+kênh realtime (Socket.IO, cùng địa chỉ `ERP_SOCKET_URL` / host API), sự kiện `roast:samples` có xác nhận (`erp/live_stream.py`).
+Không cần cấu hình thêm.
+- Mỗi gói kèm `sessionId` là mã phiên Artisan đang giữ máy rang; ERP chỉ nhận từ đúng phiên đó.
+- Mất mạng thì mẫu chờ trong bộ nhớ và được gửi bù khi kết nối lại; dải thông báo hiện "● Đang gửi ERP" / "● Đang gửi bù ERP".
+- Sau khi dừng ghi, phần còn lại được gửi tối đa 10 phút. RESET huỷ mẻ hoặc thoát Artisan thì bỏ phần chưa gửi.
+- Đây chỉ là dữ liệu để xem trực tiếp: tệp `.alog` gửi sau khi kết thúc mẻ vẫn là bản gốc. Lỗi gửi chỉ ghi log, không làm phiền người rang.

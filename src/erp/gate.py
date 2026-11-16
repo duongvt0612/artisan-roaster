@@ -29,6 +29,7 @@ from erp import attachments, background, banner as erp_banner, config, device, r
 from erp.attachments import Job, UploadQueue, Uploader
 from erp.client import ErpAuthError
 from erp.lease import LeaseManager, LeaseState
+from erp.live_stream import LiveStreamer
 from erp.login import erp_login, error_text
 from erp.roaster_dialog import RoasterDialog
 from erp.roasters import Claim, Roaster
@@ -150,6 +151,7 @@ class _Bridge(QObject):
     """Moves lease state changes from the heartbeat thread to the GUI thread."""
     state_changed = pyqtSignal(object, str)
     upload_event = pyqtSignal(str, object, str)
+    live_state = pyqtSignal(str)
 
 
 class _State:
@@ -159,6 +161,7 @@ class _State:
         self.aw:Any = None
         self.manager:LeaseManager|None = None
         self.realtime:erp_realtime.RealtimeClient|None = None
+        self.live:LiveStreamer|None = None  # sends the samples of the batch's recording on the realtime channel
         self.dialog:RoasterDialog|None = None
         self.banner:erp_banner.LeaseBanner|None = None
         self.bridge:_Bridge|None = None
@@ -237,9 +240,44 @@ def _start_realtime() -> None:
     )
     client.start()
     _state.realtime = client
+    _start_live(client)
+
+
+def _start_live(client:erp_realtime.RealtimeClient) -> None:
+    """The live samples of a batch go out on the realtime channel (erp.live_stream). Failing here never keeps the user out."""
+    try:
+        bridge = _ensure_bridge()
+        live = LiveStreamer(emit=client.emit_with_ack, on_state=bridge.live_state.emit)
+        _state.live = live
+        roast_flow.set_live(live)
+    except Exception as e: # pylint: disable=broad-except
+        _log.exception(e)
+
+
+def _stop_live() -> None:
+    """Whatever was not sent stays out of the ERP's live view; the .alog file of the batch is the reference anyway."""
+    live = _state.live
+    _state.live = None
+    roast_flow.set_live(None)
+    if live is not None:
+        live.abort()
+
+
+def _on_live_state(state:str) -> None:
+    if _state.banner is not None:
+        _state.banner.set_live(state)
+
+
+def on_sample(aw:'ApplicationWindow') -> None:
+    """Artisan took a sample while recording (GUI thread): the new samples go to the live sender. Never breaks the sampling."""
+    try:
+        roast_flow.live_sample(aw)
+    except Exception as e: # pylint: disable=broad-except
+        _log.exception(e)
 
 
 def _stop_realtime() -> None:
+    _stop_live()
     client = _state.realtime
     _state.realtime = None
     if client is not None:
@@ -332,6 +370,7 @@ def _ensure_bridge() -> _Bridge:
     if _state.bridge is None:
         _state.bridge = _Bridge()
         _state.bridge.state_changed.connect(_on_lease_state)
+        _state.bridge.live_state.connect(_on_live_state)
     return _state.bridge
 
 
@@ -465,6 +504,7 @@ def release_roaster(timeout:float = RELEASE_WAIT_SECONDS) -> None:
     _state.manager = None
     realtime = _state.realtime
     _state.realtime = None
+    _stop_live() # before the channel it sends on
     _stop_uploads() # files still queued stay on disk and are sent at the next start
     if manager is None and realtime is None:
         return

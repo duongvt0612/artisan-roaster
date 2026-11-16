@@ -34,10 +34,22 @@ class FakeSio:
         self.handlers[event] = handler
         return handler
 
+    connected = False
+    call_result:Any = None  # what call() answers; an exception is raised
+    call_timeout:float|None = None
+
     def connect(self, *args:Any, **kwargs:Any) -> None:
         self.connect_args, self.connect_kwargs = args, kwargs
         if self.connect_error is not None:
             raise self.connect_error
+        self.connected = True
+
+    def call(self, event:str, data:Any = None, timeout:float = 60) -> Any:
+        self.emitted.append((event, data))
+        self.call_timeout = timeout
+        if isinstance(self.call_result, BaseException):
+            raise self.call_result
+        return self.call_result
 
     def emit(self, event:str, data:Any = None) -> None:
         self.emitted.append((event, data))
@@ -217,4 +229,58 @@ def test_a_failing_revoked_callback_does_not_break_the_channel() -> None:
     c.start()
     assert _wait_for(lambda: FakeSio.instances and 'auth:session-revoked' in FakeSio.instances[0].handlers)
     FakeSio.instances[0].handlers['auth:session-revoked']({'reason': 'logout'})
+    c.stop()
+
+
+# ---- emit_with_ack: the live roast samples go out on the same connection ----
+
+def test_emit_with_ack_returns_the_answer_of_the_server() -> None:
+    h = Harness()
+    c = h.make()
+    c.start()
+    assert _wait_for(lambda: FakeSio.instances and FakeSio.instances[0].connected)
+    sio = FakeSio.instances[0]
+    sio.call_result = {'ok': True, 'lastSeq': 4}
+    assert c.emit_with_ack('roast:samples', {'roundId': 'r1'}, timeout=3.0) == {'ok': True, 'lastSeq': 4}
+    assert ('roast:samples', {'roundId': 'r1'}) in sio.emitted
+    assert sio.call_timeout == 3.0
+    c.stop()
+
+
+def test_emit_with_ack_without_a_connection_raises_not_connected() -> None:
+    h = Harness()
+    c = h.make()
+    with pytest.raises(realtime.NotConnected):
+        c.emit_with_ack('roast:samples', {})  # never started
+    c.start()
+    assert _wait_for(lambda: FakeSio.instances and FakeSio.instances[0].connected)
+    FakeSio.instances[0].connected = False  # dropped
+    with pytest.raises(realtime.NotConnected):
+        c.emit_with_ack('roast:samples', {})
+    c.stop()
+    with pytest.raises(realtime.NotConnected):
+        c.emit_with_ack('roast:samples', {})  # stopped
+
+
+class _SocketioTimeout(Exception):
+    """Stands for socketio.exceptions.TimeoutError: same name, not the builtin."""
+
+
+_SocketioTimeout.__name__ = 'TimeoutError'
+
+
+@pytest.mark.parametrize(('raised', 'expected'), [
+    (_SocketioTimeout(), TimeoutError),
+    (TimeoutError(), TimeoutError),
+    (ConnectionError('gone'), realtime.NotConnected),
+    (RuntimeError('/ is not a connected namespace'), realtime.NotConnected),
+])
+def test_emit_with_ack_maps_the_errors_of_python_socketio(raised:Exception, expected:type[Exception]) -> None:
+    h = Harness()
+    c = h.make()
+    c.start()
+    assert _wait_for(lambda: FakeSio.instances and FakeSio.instances[0].connected)
+    FakeSio.instances[0].call_result = raised
+    with pytest.raises(expected):
+        c.emit_with_ack('roast:samples', {})
     c.stop()

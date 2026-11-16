@@ -749,3 +749,47 @@ class TestAwaitingWeigh:
         gate.roast_flow._flow.awaiting = 4  # pylint: disable=protected-access
         gate._on_batch_changed()  # pylint: disable=protected-access
         bar.set_awaiting.assert_called_with(4)
+
+
+class TestLiveStream:
+    """The sender of the live samples rides on the realtime channel and follows Artisan's sampling."""
+
+    def test_it_is_created_with_the_realtime_channel_and_handed_to_the_flow(self, aw:MagicMock, roaster_env:SimpleNamespace) -> None:  # noqa: ARG002
+        with patch.object(gate.erp_realtime, 'is_available', return_value=True), \
+             patch.object(gate.erp_realtime, 'RealtimeClient'), \
+             patch.object(gate.roast_flow, 'set_live') as set_live:
+            FakeDialog.script = [{'accept': True, 'claim': _claim(), 'roaster': _roaster()}]
+            assert gate.require_roaster(aw) is True
+            live = set_live.call_args_list[0].args[0]
+            assert isinstance(live, gate.LiveStreamer)
+            with patch.object(live, 'abort') as abort:
+                gate.release_roaster()
+            abort.assert_called_once_with()  # quitting drops what is left: the .alog file is the reference
+        assert set_live.call_args_list[-1].args == (None,)  # and switches it off
+
+    def test_the_emit_of_the_sender_is_the_realtime_clients(self, aw:MagicMock, roaster_env:SimpleNamespace) -> None:  # noqa: ARG002
+        with patch.object(gate.erp_realtime, 'is_available', return_value=True), \
+             patch.object(gate.erp_realtime, 'RealtimeClient') as client_cls, \
+             patch.object(gate, 'LiveStreamer') as live_cls:
+            FakeDialog.script = [{'accept': False}]
+            gate.require_roaster(aw)
+        assert live_cls.call_args.kwargs['emit'] is client_cls.return_value.emit_with_ack
+
+    def test_without_realtime_there_is_no_sender(self, aw:MagicMock, roaster_env:SimpleNamespace) -> None:  # noqa: ARG002
+        with patch.object(gate.roast_flow, 'set_live') as set_live:
+            FakeDialog.script = [{'accept': True, 'claim': _claim(), 'roaster': _roaster()}]
+            gate.require_roaster(aw)
+        assert all(c.args == (None,) for c in set_live.call_args_list)
+
+    def test_each_sample_goes_to_the_flow_and_a_failure_stays_inside(self, aw:MagicMock) -> None:
+        with patch.object(gate.roast_flow, 'live_sample') as live_sample:
+            gate.on_sample(aw)
+            live_sample.assert_called_once_with(aw)
+            live_sample.side_effect = RuntimeError('bug')
+            gate.on_sample(aw)  # never breaks Artisan's sampling
+
+    def test_the_state_reaches_the_banner(self, roaster_env:SimpleNamespace) -> None:  # noqa: ARG002
+        bar = MagicMock()
+        gate._state.banner = bar  # pylint: disable=protected-access
+        gate._on_live_state('catching_up')  # pylint: disable=protected-access
+        bar.set_live.assert_called_once_with('catching_up')

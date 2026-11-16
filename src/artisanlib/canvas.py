@@ -5157,6 +5157,13 @@ class tgraphcanvas(QObject):
                     _log.exception(e)
                     _, _, exc_tb = sys.exc_info()
                     self.adderror((QApplication.translate('Error Message','Exception:') + ' sample_processing() {0}').format(str(e)),getattr(exc_tb, 'tb_lineno', '?'))
+                # ERP: the new samples of a batch's recording go to the live sender (cheap, never talks to the network)
+                if local_flagstart:
+                    try:
+                        import erp.gate # pylint: disable=import-outside-toplevel
+                        erp.gate.on_sample(self.aw)
+                    except Exception as e: # pylint: disable=broad-except
+                        _log.exception(e)
                 #update screen in main GUI thread
                 self.updategraphicsSignal.emit()
 

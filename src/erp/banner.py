@@ -87,6 +87,7 @@ class LeaseBanner(QFrame):
         self.kind:str = 'held'
         self.batch_text:str = ''          # which batch is running ('' if none)
         self.files_text:str = ''          # how many files of finished batches are still to be sent to the ERP ('' if none)
+        self.live_text:str = ''           # whether the live samples of the batch reach the ERP ('' when not streaming)
         self.awaiting:int|None = None     # how many finished batches still wait for their weight (None: not known yet)
         self._shown:tuple[LeaseState, str, str] = (LeaseState.IDLE, '', '')
         self.label:QLabel = QLabel('')
@@ -140,6 +141,14 @@ class LeaseBanner(QFrame):
         self.files_text = QApplication.translate('ERP', '{0} tệp chưa gửi lên ERP').format(count) if count > 0 else ''
         self._render()
 
+    def set_live(self, state:str) -> None:
+        """The state of the live samples (erp.live_stream): a dot next to the batch while they are sent, nothing otherwise."""
+        self.live_text = {
+            'sending': QApplication.translate('ERP', '● Đang gửi ERP'),
+            'catching_up': QApplication.translate('ERP', '● Đang gửi bù ERP'),
+        }.get(state, '')
+        self._render()
+
     def set_awaiting(self, count:int|None) -> None:
         """Tells how many finished batches wait for their weight (None: not known); it is the number on the button that opens their list."""
         self.awaiting = count
@@ -170,7 +179,7 @@ class LeaseBanner(QFrame):
             self._set_kind('lost')
             text = lost_text(name, reason)
             self.reselect_button.setVisible(True)
-        extras = ' · '.join(t for t in (self.batch_text, self.files_text) if t)
+        extras = ' · '.join(t for t in (self.batch_text, self.live_text, self.files_text) if t)
         if extras:
             text = f'{text} · {extras}' if state is LeaseState.HELD else f'{text} {extras}'
         self.label.setText(text)

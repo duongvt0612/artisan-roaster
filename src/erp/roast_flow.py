@@ -33,10 +33,11 @@ from typing import Any, Final, TYPE_CHECKING, cast
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication, QInputDialog, QMessageBox
 
-from erp import background, batch as erp_batch, finish_dialog, roast_files, roasters, rounds, start_dialog, weigh_dialog
+from erp import background, batch as erp_batch, device, finish_dialog, roast_files, roasters, rounds, start_dialog, weigh_dialog
 from erp.attachments import UploadQueue, Uploader
 from erp.batch import Batch
 from erp.lease import LeaseManager
+from erp.live_stream import LiveStreamer, Sample
 from erp.rounds import ActiveRound
 
 if TYPE_CHECKING:
@@ -60,6 +61,7 @@ class _Flow:
         self.queue:UploadQueue|None = None       # where the files of finished batches wait for the ERP (None: files are not sent)
         self.uploader:Uploader|None = None
         self.awaiting:int|None = None            # how many batches of this user wait for their weight (None: the ERP was not asked successfully yet)
+        self.live:LiveStreamer|None = None       # streams the samples of the batch's recording to the ERP (None: not available)
 
 
 _flow:_Flow = _Flow()
@@ -69,6 +71,11 @@ def _reset_state() -> None:
     """For tests."""
     global _flow # pylint: disable=global-statement
     _flow = _Flow()
+
+
+def set_live(live:LiveStreamer|None) -> None:
+    """The sender of the live samples (None switches it off)."""
+    _flow.live = live
 
 
 def set_uploads(queue:UploadQueue|None, uploader:Uploader|None) -> None:
@@ -249,6 +256,60 @@ def recording_started(aw:'ApplicationWindow') -> None:
     if _flow.batch is not None:
         _flow.linked = _flow.batch
         _flow.linked_epoch = int(getattr(aw.qmc, 'roastepoch', 0) or 0) or None
+        live = _flow.live
+        if live is not None and _flow.linked_epoch is not None:
+            # the session that holds the roaster (the ERP checks it against the lease), not the login token
+            live.begin(_flow.batch.round_id, device.session_id(), _flow.linked_epoch, live_settings(aw))
+
+
+# ---- the live samples (erp.live_stream) -------------------------------------------------------------------------------------
+
+def live_settings(aw:'ApplicationWindow') -> dict[str, Any]:
+    """What the ERP needs to draw the curve as Artisan does (sent once per recording)."""
+    qmc = aw.qmc
+    return {
+        'samplingIntervalMs': int(getattr(qmc, 'delay', 0) or 0),
+        'mode': str(getattr(qmc, 'mode', 'C')),
+        'deltaBTspan': getattr(qmc, 'deltaBTspan', None),
+        'deltaETspan': getattr(qmc, 'deltaETspan', None),
+        'extraNames': [name for pair in zip(getattr(qmc, 'extraname1', []), getattr(qmc, 'extraname2', []), strict=False) for name in pair],
+        'eventTypes': list(getattr(qmc, 'etypes', [])),
+    }
+
+
+def _at(values:Any, i:int) -> float|None:
+    try:
+        return float(values[i])
+    except (IndexError, TypeError, ValueError):
+        return None
+
+
+def live_sample(aw:'ApplicationWindow') -> None:
+    """Called by Artisan's sampling (GUI thread) after each sample while recording: hands the new samples over to the sender.
+    Cheap and never talks to the network; seq is the index in Artisan's arrays."""
+    live = _flow.live
+    if live is None:
+        return
+    first = live.next_seq
+    if first is None:
+        return
+    qmc = aw.qmc
+    timex = qmc.timex
+    extra1, extra2 = getattr(qmc, 'extratemp1', []), getattr(qmc, 'extratemp2', [])
+    samples:list[Sample] = []
+    for i in range(first, len(timex)):
+        extra:list[float|None] = []
+        for device_index in range(min(len(extra1), len(extra2))):
+            extra.append(_at(extra1[device_index], i))
+            extra.append(_at(extra2[device_index], i))
+        samples.append((i, int(round(float(timex[i]) * 1000)), _at(qmc.temp1, i), _at(qmc.temp2, i), extra))
+    events = {
+        'timeindex': list(qmc.timeindex),
+        'specialevents': list(getattr(qmc, 'specialevents', [])),
+        'specialeventstype': list(getattr(qmc, 'specialeventstype', [])),
+        'specialeventsvalue': list(getattr(qmc, 'specialeventsvalue', [])),
+    }
+    live.offer(samples, events)
 
 
 def _ask_active_round(aw:'ApplicationWindow', roaster_id:str) -> ActiveRound|None:
@@ -477,6 +538,8 @@ def _enqueue_files(aw:'ApplicationWindow', b:Batch) -> None:
 def roast_stopped(aw:'ApplicationWindow') -> None:
     """Called when Artisan stopped recording: a batch still open is finished now, and the files of a batch finished meanwhile are built
     (after a short delay, once Artisan is done stopping)."""
+    if _flow.live is not None:
+        _flow.live.end() # what is left of the live samples is sent, whether the batch is finished or not
     if _flow.batch is None and _flow.files_wait is None:
         return
 
@@ -520,6 +583,8 @@ def before_reset(aw:'ApplicationWindow') -> bool:
     _flow.linked = None
     _flow.linked_epoch = None
     _flow.files_wait = None
+    if _flow.live is not None:
+        _flow.live.abort() # the batch is cancelled: its live samples are not needed any more
     _changed()
     return True
 
