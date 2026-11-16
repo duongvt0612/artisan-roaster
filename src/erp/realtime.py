@@ -7,6 +7,8 @@
 #   roaster:changed     {equipmentId, status, version}   a roaster was claimed / released (room "roasters")
 #   roaster:lease-lost  {equipmentId, reason}            this user lost a roaster, e.g. forced release (own room)
 #
+# It also carries the live samples of the roast being recorded to the ERP (emit_with_ack, used by erp.live_stream).
+#
 # This is ONLY an accelerator. The lease itself lives in the ERP database and is kept alive over HTTP (erp.lease), so Artisan stays
 # correct without this channel: the selection dialog polls and the heartbeat discovers a lost lease. If python-socketio is not
 # installed or the gateway is unreachable, this class just keeps retrying quietly.
@@ -40,6 +42,10 @@ EVENT_LEASE_LOST: Final[str] = 'roaster:lease-lost'
 EVENT_SESSION_REVOKED: Final[str] = 'auth:session-revoked' # the login session was ended; the server drops the socket right after it
 
 Payload = dict[str, Any]
+
+
+class NotConnected(Exception):
+    """emit_with_ack() was called while the channel is not connected (yet, or any more)."""
 
 
 def is_available() -> bool:
@@ -104,6 +110,23 @@ class RealtimeClient:
         thread = self._thread
         if thread is not None and thread is not threading.current_thread():
             thread.join(timeout=2)
+
+    def emit_with_ack(self, event:str, payload:Payload, timeout:float = 10.0) -> Any:
+        """Sends an event on the open connection and waits for the server's answer (its ack). Called from another thread than the listener's
+        (erp.live_stream): it never connects by itself.
+
+        Raises NotConnected when there is no connection now, TimeoutError when the server did not answer in time."""
+        with self._lock:
+            sio = self._sio
+        if sio is None or self._stop.is_set() or not getattr(sio, 'connected', False):
+            raise NotConnected
+        try:
+            return sio.call(event, payload, timeout=timeout)
+        except Exception as e: # pylint: disable=broad-except
+            # python-socketio has its own TimeoutError (socketio.exceptions), not the builtin one; anything else means the connection went away
+            if isinstance(e, TimeoutError) or type(e).__name__ == 'TimeoutError':
+                raise TimeoutError from e
+            raise NotConnected from e
 
     def _dispatch(self, callback:Callable[[Payload], None], payload:Any) -> None:
         if not isinstance(payload, dict):

@@ -237,3 +237,25 @@ class TestAwaitingWeigh:
         bar.apply(LeaseState.HELD, 'Máy', '')
         bar.apply(LeaseState.IDLE, 'Máy', '')
         assert not bar.isVisible()
+
+
+class TestLiveStream:
+    """The live samples of the batch reach the ERP: a dot next to the batch says so (erp.live_stream)."""
+
+    def test_sending_is_shown_next_to_the_batch(self, bar:banner.LeaseBanner) -> None:
+        bar.apply(LeaseState.HELD, 'Máy', '')
+        bar.set_batch('Đang rang LS-1')
+        bar.set_live('sending')
+        assert bar.label.text() == 'Máy rang đang dùng: Máy · Đang rang LS-1 · ● Đang gửi ERP'
+
+    def test_catching_up_says_the_samples_wait(self, bar:banner.LeaseBanner) -> None:
+        bar.apply(LeaseState.HELD, 'Máy', '')
+        bar.set_live('catching_up')
+        assert bar.label.text() == 'Máy rang đang dùng: Máy · ● Đang gửi bù ERP'
+
+    @pytest.mark.parametrize('state', ['idle', 'stopped', 'whatever'])
+    def test_nothing_is_shown_otherwise(self, bar:banner.LeaseBanner, state:str) -> None:
+        bar.apply(LeaseState.HELD, 'Máy', '')
+        bar.set_live('sending')
+        bar.set_live(state)
+        assert bar.label.text() == 'Máy rang đang dùng: Máy'
