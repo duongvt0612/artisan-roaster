@@ -1,0 +1,188 @@
+version: 2.1
+
+# Portable Windows build of Artisan (LVG ERP fork) and its release to the ERP, for the self-update (src/erp/updater.py, launcher/).
+#
+#   branch dev    -> context artisan-dev  -> build for the dev ERP        -> release on the dev ERP
+#   branch master -> context artisan-prod -> build for the production ERP -> release on the production ERP
+#
+# Each workflow: manual approval (a Windows build costs credits) -> launcher (Go, Linux) -> Windows build (PyInstaller onedir + zip)
+# -> upload to the ERP release list as application 'artisan-windows'. The build number (versionCode) is the pipeline number, so every
+# release is newer than the one before. isForceUpdate is always false on upload; an admin turns it on in the ERP when needed.
+#
+# Context variables (same names in both contexts, different values):
+#   ERP_API_BASE_URL     https://<erp-api host>/api      the ERP the build talks to (bundled in erp-config.json)
+#   ERP_ENVIRONMENT      production | dev | ...
+#   ERP_SOCKET_URL       optional, only if Socket.IO is not on the API host
+#   APP_VERSIONS_URL     https://<erp-api host>/api/app-version  release API of the ERP (static token). Only small JSON goes there: the
+#                        zip itself is PUT straight to R2 with a signed URL (it is far above the 100 MB body limit of the Cloudflare proxy)
+#   APP_VERSIONS_TOKEN   = APP_VERSIONS_TOKEN of the ERP backend
+#
+# Tests and linters run on GitHub Actions (.github/workflows); this config only builds and releases.
+
+orbs:
+  win: circleci/windows@5.1.0
+
+parameters:
+  python_version:
+    type: string
+    default: "3.14.6" # keep in line with PYUPGRADE_WIN_VER of .appveyor.yml
+
+commands:
+  validate_env:
+    parameters:
+      names:
+        type: string
+    steps:
+      - run:
+          name: Check context variables
+          command: |
+            missing=""""
+            for name in << parameters.names >>; do
+              eval "value=\${$name:-}"
+              [ -n "$value" ] || missing="$missing $name"
+            done
+            if [ -n "$missing" ]; then
+              echo "Missing in the CircleCI context:$missing"
+              exit 1
+            fi
+
+jobs:
+  launcher:
+    docker:
+      - image: cimg/go:1.25
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: Test launcher
+          command: cd launcher && go vet ./... && GOOS=windows go vet ./... && go test ./...
+      - run:
+          name: Build Artisan.exe (Windows launcher)
+          command: launcher/build.sh "$PWD/ws"
+      - store_artifacts:
+          path: ws/Artisan.exe
+      - persist_to_workspace:
+          root: ws
+          paths: [Artisan.exe]
+
+  windows_build:
+    executor:
+      name: win/default
+      size: medium
+    environment:
+      PYTHON_PATH: C:\Python314-x64
+      PYQT: "6"
+      PYUIC: pyuic6.exe
+      BUILD_PYINSTALLER: "False"
+      VC_REDIST: https://aka.ms/vc14/vc_redist.x64.exe
+    steps:
+      - checkout # ERP_API_BASE_URL / ERP_ENVIRONMENT missing in the context: make-erp-config.py stops the build with a message
+      - attach_workspace:
+          at: ws
+      - run:
+          name: Install Python << pipeline.parameters.python_version >>
+          shell: powershell.exe -ExecutionPolicy Bypass
+          command: |
+            $ErrorActionPreference = 'Stop'
+            $v = '<< pipeline.parameters.python_version >>'
+            Invoke-WebRequest "https://www.python.org/ftp/python/$v/python-$v-amd64.exe" -OutFile python-installer.exe
+            Start-Process python-installer.exe -Wait -ArgumentList '/quiet','InstallAllUsers=1',"TargetDir=$env:PYTHON_PATH",'PrependPath=0','Include_test=0'
+            & "$env:PYTHON_PATH\python.exe" -V
+            if (-not (Get-Command 7z -ErrorAction SilentlyContinue)) { choco install 7zip -y --no-progress }
+      - run:
+          name: Build portable Artisan
+          shell: cmd.exe
+          environment:
+            ERP_BUILD_CODE: << pipeline.number >>
+          command: call .ci\circleci-build-win.bat
+      - store_artifacts:
+          path: src/dist-portable
+      - persist_to_workspace:
+          root: src
+          paths: [dist-portable]
+
+  publish:
+    docker:
+      - image: cimg/python:3.12
+    resource_class: small
+    steps:
+      - validate_env:
+          names: APP_VERSIONS_URL APP_VERSIONS_TOKEN
+      - attach_workspace:
+          at: ws
+      - run:
+          name: Upload the release straight to R2 and register it on the ERP (application artisan-windows)
+          command: |
+            set -eu
+            meta=$(ls ws/dist-portable/artisan-win-*.json | head -n 1)
+            zip="${meta%.json}.zip"
+            test -f "$zip"
+            # the declaration sent twice (prepare, complete): metadata of make-portable-zip.py + the real size of the zip
+            python3 - "$meta" "$zip" > declaration.json \<<'PY'
+            import json, os, sys
+            meta = json.load(open(sys.argv[1]))
+            notes = f"{os.environ.get('CIRCLE_BRANCH', '')} {os.environ.get('CIRCLE_SHA1', '')}".strip()
+            print(json.dumps({'app': 'artisan-windows', 'versionCode': meta['versionCode'], 'versionName': meta['versionName'],
+                              'apkChecksum': meta['apkChecksum'], 'apkChecksumAlgorithm': 'sha256', 'size': os.path.getsize(sys.argv[2]),
+                              'isForceUpdate': False, 'releaseNotes': notes}))
+            PY
+            call_erp() { # call_erp <path> -> body in response.json, fails on a non 2xx answer
+              status=$(curl -sS -o response.json -w '%{http_code}' --connect-timeout 15 --max-time 120 \
+                -H "Authorization: Bearer ${APP_VERSIONS_TOKEN}" -H 'Content-Type: application/json' \
+                --data-binary @declaration.json "${APP_VERSIONS_URL%/}$1")
+              if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+                echo "ERP answered HTTP $status on $1:"; head -c 2000 response.json; echo
+                exit 22
+              fi
+            }
+            echo "1/3 asking the ERP for an upload URL for $(basename "$zip") ($(wc -c < "$zip" | tr -d " ") bytes)"
+            call_erp /direct-upload
+            upload_url=$(python3 -c "import json; print(json.load(open('response.json'))['data']['uploadUrl'])")
+            echo "2/3 uploading straight to R2"
+            curl -sS --fail-with-body --retry 3 --retry-all-errors --connect-timeout 15 --max-time 1800 \
+              -X PUT -T "$zip" -H 'Content-Type: application/zip' "$upload_url" -o r2-response.txt \
+              || { echo "R2 refused the upload:"; head -c 2000 r2-response.txt; echo; exit 22; }
+            echo "3/3 registering the release on the ERP"
+            call_erp /direct-upload/complete
+            python3 -c "import json; d=json.load(open('response.json'))['data']; print('release', d['versionName'], 'is', d['remoteStatus'], '(the ERP checks its SHA-256 now)')"
+
+workflows:
+  dev:
+    jobs:
+      - approve_dev:
+          type: approval
+          filters: { branches: { only: dev } }
+      - launcher:
+          name: launcher_dev
+          requires: [approve_dev]
+          filters: { branches: { only: dev } }
+      - windows_build:
+          name: windows_build_dev
+          context: [artisan-dev]
+          requires: [launcher_dev]
+          filters: { branches: { only: dev } }
+      - publish:
+          name: publish_dev
+          context: [artisan-dev]
+          requires: [windows_build_dev]
+          filters: { branches: { only: dev } }
+
+  prod:
+    jobs:
+      - approve_prod:
+          type: approval
+          filters: { branches: { only: master } }
+      - launcher:
+          name: launcher_prod
+          requires: [approve_prod]
+          filters: { branches: { only: master } }
+      - windows_build:
+          name: windows_build_prod
+          context: [artisan-prod]
+          requires: [launcher_prod]
+          filters: { branches: { only: master } }
+      - publish:
+          name: publish_prod
+          context: [artisan-prod]
+          requires: [windows_build_prod]
+          filters: { branches: { only: master } }

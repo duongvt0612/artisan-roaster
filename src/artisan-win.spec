@@ -99,13 +99,14 @@ def del_file(file_path, fatal=True):
 ###################################
 # Setup the environment
 ###################################
-if os.environ.get('APPVEYOR'):
-    ARTISAN_SRC = r'C:\projects\artisan\src'
+if os.environ.get('APPVEYOR') or os.environ.get('CIRCLECI'):
+    # Appveyor builds the upstream installer; CircleCI the portable build of the LVG ERP fork (checked out anywhere: the spec runs in src/)
+    ARTISAN_SRC = os.environ.get('ARTISAN_SRC') or (r'C:\projects\artisan\src' if os.environ.get('APPVEYOR') else os.getcwd())
     PYTHON = os.environ.get('PYTHON_PATH')
     PYQT = os.environ.get('PYQT')
     QT_TRANSL = os.environ.get('QT_TRANSL')
 else:
-    msg =f'artisan-win.spec is intended only to run on Appveyor CI.'
+    msg =f'artisan-win.spec is intended only to run on Appveyor or CircleCI.'
     logging.error(msg)
     sys.exit('Fatal Error')
 

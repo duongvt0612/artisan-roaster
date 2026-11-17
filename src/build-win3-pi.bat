@@ -30,8 +30,9 @@
 
 :: ----------------------------------------------------------------------
 setlocal enabledelayedexpansion
-if /i "%APPVEYOR%" NEQ "True" (
-    echo This file is for use on Appveyor CI only.
+:: Appveyor (upstream installer) or CircleCI (portable build of the LVG ERP fork)
+if /i "%APPVEYOR%" NEQ "True" if /i "%CIRCLECI%" NEQ "true" (
+    echo This file is for use on Appveyor or CircleCI only.
     exit /b 1
 )
 :: ----------------------------------------------------------------------
@@ -67,6 +68,19 @@ if ERRORLEVEL 1 (echo ** Failed in make-erp-config.py: set ERP_API_BASE_URL and 
 echo **** Running pyinstaller
 pyinstaller --noconfirm --log-level=WARN artisan-win.spec
 if ERRORLEVEL 1 (echo ** Failed in pyinstaller & exit /b 1) else (echo ** Success)
+
+::
+:: portable build (LVG ERP fork, CircleCI): no installer, a zip for the self-update (+ first-install zip with the launcher)
+if "%ARTISAN_PORTABLE%"=="1" (
+    if defined ARTISAN_LAUNCHER (
+        python make-portable-zip.py --launcher "%ARTISAN_LAUNCHER%"
+    ) else (
+        python make-portable-zip.py
+    )
+    if ERRORLEVEL 1 (echo ** Failed in make-portable-zip.py & exit /b 1)
+    echo ** Success: portable zip in dist-portable
+    exit /b 0
+)
 
 ::
 :: Don't make assumptions as to where the 'makensis.exe' is - look in the obvious places

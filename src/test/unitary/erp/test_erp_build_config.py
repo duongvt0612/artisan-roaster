@@ -18,7 +18,7 @@ BUILD_SCRIPTS = [SRC / 'build-linux.sh', SRC / 'build-macos3.sh', SRC / 'build-w
 
 
 def run(tmp_path:Path, *args:str, env:dict[str, str]|None = None) -> subprocess.CompletedProcess[str]:
-    clean = {k: v for k, v in os.environ.items() if k not in (config.ENV_API_URL, config.ENV_ENVIRONMENT, config.ENV_SOCKET_URL)}
+    clean = {k: v for k, v in os.environ.items() if k not in (config.ENV_API_URL, config.ENV_ENVIRONMENT, config.ENV_SOCKET_URL, config.ENV_BUILD_CODE)}
     clean.update(env or {})
     return subprocess.run([sys.executable, str(SCRIPT), '--out', str(tmp_path / 'erp-config.json'), *args],
                           capture_output=True, text=True, env=clean, check=False, cwd=str(tmp_path))
@@ -45,6 +45,21 @@ class TestMakeErpConfig:
         monkeypatch.setattr(config, '_config_file', lambda: tmp_path / 'erp-config.json')
         config.reset_cache()
         assert config.get_api_base_url() == 'https://erp-api.example.vn/api' and config.environment() == 'staging'
+
+    def test_writes_the_build_number_for_the_self_update(self, tmp_path:Path, monkeypatch:pytest.MonkeyPatch) -> None:
+        r = run(tmp_path, '--url', 'https://erp-api.example.vn/api', '--env', 'production', env={config.ENV_BUILD_CODE: '125'})
+        assert r.returncode == 0, r.stderr
+        data = json.loads((tmp_path / 'erp-config.json').read_text(encoding='utf-8'))
+        assert data['buildCode'] == 125
+        monkeypatch.delenv(config.ENV_BUILD_CODE, raising=False)
+        monkeypatch.setattr(config, '_config_file', lambda: tmp_path / 'erp-config.json')
+        assert config.build_code() == 125
+
+    @pytest.mark.parametrize('code', ['0', '-1', 'abc', '1.5'])
+    def test_an_invalid_build_number_stops_the_build(self, tmp_path:Path, code:str) -> None:
+        r = run(tmp_path, '--url', 'https://erp-api.example.vn/api', '--env', 'production', '--build-code', code)
+        assert r.returncode == 2
+        assert not (tmp_path / 'erp-config.json').exists()
 
     def test_there_is_no_default_server(self, tmp_path:Path) -> None:
         r = run(tmp_path, '--env', 'production')

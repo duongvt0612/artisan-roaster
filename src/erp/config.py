@@ -58,6 +58,9 @@ lease_suspect_fraction: Final[float] = 0.8
 ENV_API_URL: Final[str] = 'ERP_API_BASE_URL'
 ENV_ENVIRONMENT: Final[str] = 'ERP_ENVIRONMENT'
 ENV_SOCKET_URL: Final[str] = 'ERP_SOCKET_URL'
+# build number of this build (the CircleCI pipeline number), compared with the versionCode of the ERP release list by the self-update.
+# The file value is written by make-erp-config.py; the variable is for development and tests.
+ENV_BUILD_CODE: Final[str] = 'ERP_BUILD_CODE'
 CONFIG_FILENAME: Final[str] = 'erp-config.json'
 PRODUCTION_NAMES: Final[frozenset[str]] = frozenset({'production', 'prod'})
 _LOCAL_HOSTS: Final[frozenset[str]] = frozenset({'localhost', '127.0.0.1', '::1'})
@@ -214,6 +217,28 @@ def get_roasters_url() -> str:
 def get_artisan_url() -> str:
     """Prefix of the roasting API made for Artisan (find commands, start / finish / cancel a roast batch)."""
     return get_api_base_url() + '/artisan'
+
+
+def build_code() -> int:
+    """Build number of this build (CircleCI pipeline number), 0 if unknown (run from source, local build): the self-update compares it with
+    the versionCode of the newest release on the ERP. Never raises."""
+    raw:Any = os.environ.get(ENV_BUILD_CODE)
+    if not raw:
+        try:
+            data = _read_file()
+        except ConfigError:
+            data = None
+        raw = data.get('buildCode') if data else None
+    try:
+        value = int(raw) if raw is not None and not isinstance(raw, bool) else 0
+    except (TypeError, ValueError):
+        return 0
+    return max(0, value)
+
+
+def get_app_version_latest_url() -> str:
+    """Newest release of an application on the ERP (public, no login needed); the application is given as ?app=."""
+    return get_api_base_url() + '/app-version/latest'
 
 
 def get_socket_url() -> str:

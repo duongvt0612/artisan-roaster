@@ -28,6 +28,8 @@ def main(argv:list[str]|None = None) -> int:
     parser.add_argument('--url', default=os.environ.get(config.ENV_API_URL), help='ERP API base URL (https, e.g. https://erp-api.example.vn/api)')
     parser.add_argument('--env', default=os.environ.get(config.ENV_ENVIRONMENT), help='environment name: production, staging, ...')
     parser.add_argument('--socket-url', default=os.environ.get(config.ENV_SOCKET_URL), help='Socket.IO origin if it is not the API host (optional)')
+    parser.add_argument('--build-code', default=os.environ.get(config.ENV_BUILD_CODE),
+                        help='build number (CircleCI pipeline number) compared with the ERP release list by the self-update (optional)')
     parser.add_argument('--out', default=str(HERE / config.CONFIG_FILENAME), help='file to write')
     args = parser.parse_args(argv)
 
@@ -36,12 +38,17 @@ def main(argv:list[str]|None = None) -> int:
             raise config.ConfigError(f'No ERP server: give --url or set {config.ENV_API_URL}.')
         if not args.env or not args.env.strip():
             raise config.ConfigError(f'No environment: give --env or set {config.ENV_ENVIRONMENT} (production, staging, ...).')
-        content:dict[str, str] = {
+        content:dict[str, str|int] = {
             'apiBaseUrl': config.validate_api_url(args.url),
             'environment': config.validate_environment(args.env),
         }
         if args.socket_url and args.socket_url.strip():
             content['socketUrl'] = config.validate_api_url(args.socket_url)
+        if args.build_code is not None and str(args.build_code).strip():
+            raw = str(args.build_code).strip()
+            if not raw.isdigit() or int(raw) < 1:
+                raise config.ConfigError(f'Build code must be a positive integer, got {raw!r}.')
+            content['buildCode'] = int(raw)
     except config.ConfigError as e:
         print(f'make-erp-config: {e.message}', file=sys.stderr)
         return 2

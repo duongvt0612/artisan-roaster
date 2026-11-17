@@ -165,6 +165,26 @@ def request(method:str, url:str, token:str, json:Any = None, params:dict[str, An
         raise ErpAuthError('network', str(e)) from e
 
 
+def public_get(url:str, params:dict[str, Any]|None = None, *, stream:bool = False,
+               timeout:tuple[float, float]|None = None) -> requests.Response:
+    """Unauthenticated GET (the release list, a release file). Network problems become ErpAuthError('network'); the status is the caller's business."""
+    try:
+        return _http.get(url, params=params, headers=client_headers(), stream=stream, timeout=timeout or config.timeout)
+    except requests.exceptions.RequestException as e:
+        _log.info('ERP request failed: %s', type(e).__name__)
+        raise ErpAuthError('network', str(e)) from e
+
+
+def data_of(r:requests.Response) -> Any:
+    """The "data" part of a successful reply of a public endpoint (may be None: "nothing there"); raises ErpAuthError otherwise."""
+    body = _json(r)
+    if r.status_code == 429:
+        raise ErpAuthError('rate_limited', _error_message(body, 'Too many requests'))
+    if not 200 <= r.status_code < 300 or body.get('success') is False:
+        raise ErpAuthError('server', _error_message(body, f'HTTP {r.status_code}'))
+    return body.get('data')
+
+
 def login(username:str, password:str) -> AuthResult:
     _log.debug('ERP login()')
     data = _check(_post(config.get_login_url(), {'username': username, 'password': password}), 'invalid_credentials')

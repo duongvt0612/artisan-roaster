@@ -698,6 +698,7 @@ import plus.blend
 import plus.stock
 import erp.gate
 import erp.config
+import erp.update_flow
 
 
 
@@ -24592,45 +24593,13 @@ class ApplicationWindow(QMainWindow):
     @pyqtSlot()
     @pyqtSlot(bool)
     def checkUpdate(self, _:bool = False) -> None:
-        update_url = '<a href="https://artisan-scope.org">https://artisan-scope.org</a>'
-        update_str = QApplication.translate('About', 'There was a problem retrieving the latest version information.  Please check your Internet connection, try again later, or check manually.')
+        # the LVG ERP fork updates itself from the ERP release list (not from the upstream GitHub releases)
         try:
-            import requests
-            r = requests.get('https://api.github.com/repos/artisan-roaster-scope/artisan/releases/latest', timeout=(2,4))
-            if r.status_code != 204 and r.headers['content-type'].strip().startswith('application/json'):
-                response = r.json()
-                if 'tag_name' in response:
-                    tag_name = r.json()['tag_name']
-                    match = re.search(r'[\d\.]+',tag_name)
-                    if match is not None:
-                        latest = match.group(0)
-                        if latest > __version__:
-                            update_str = QApplication.translate('About', 'A new release is available.')
-                            update_str += '<br/><a href="https://github.com/artisan-roaster-scope/artisan/blob/master/wiki/ReleaseHistory.md">'
-                            update_str +=  QApplication.translate('About', 'Show Change list')
-                            update_str += '<br/><a href="https://github.com/artisan-roaster-scope/artisan/releases/tag/' + str(tag_name) + '">'
-                            update_str +=  QApplication.translate('About', 'Download Release') + ' ' + str(tag_name)
-                        elif latest == __version__ :
-                            update_str = QApplication.translate('About', 'You are using the latest release.')
-                        elif latest < __version__:
-                            update_str = QApplication.translate('About', 'You are using a beta continuous build.')
-                            update_str += '<br/><br/>' + QApplication.translate('About', 'You will see a notice here once a new official release is available.')
-        except json.decoder.JSONDecodeError as e:
-            if not e.doc:
-                _log.error('Empty response in checkUpdate.')
-            else:
-                _log.error("Decoding error at char %s (line %s, col %s): '%s'", e.pos, e.lineno, e.colno, e.doc)
-        except ValueError:
-            _log.error('checkUpdate response content is not valid JSON')
+            erp.update_flow.check_now(self)
         except Exception as ex: # pylint: disable=broad-except
             _log.exception(ex)
             _a, _b, exc_tb = sys.exc_info()
             self.qmc.adderror((QApplication.translate('Error Message','Exception:') + ' checkUpdate() {0}').format(str(ex)),getattr(exc_tb, 'tb_lineno', '?'))
-
-        box = QMessageBox(self)
-        box.about(self,
-                QApplication.translate('About', 'Update status'),
-                f"""<p>{update_str}</p>{update_url}""")
 
     def applicationscreenshot(self) -> None:
         imag = self.grab()
@@ -28148,6 +28117,17 @@ def ensure_roaster(app_window:'ApplicationWindow') -> bool:
         return False
 
 
+def ensure_update(app_window:'ApplicationWindow') -> bool:
+    # after the ERP login: a forced update of the portable build is installed now and Artisan restarts into it (False);
+    # any other update is fetched in the background for the next start. A failing check never keeps anybody from roasting.
+    try:
+        return erp.update_flow.after_login(app_window)
+    except Exception as e: # pylint: disable=broad-except
+        import logging
+        logging.getLogger(__name__).exception('Update check failed: %s', e)
+        return True
+
+
 def main() -> None:
 
 
@@ -28170,6 +28150,12 @@ def main() -> None:
     _log.info('locale: %s',locale_str)
 
     appWindow = ApplicationWindow(locale=locale_str, artisanviewerFirstStart=artisanviewerFirstStart)
+
+    # this version starts: tell the launcher of the portable build not to roll it back, and remove versions nobody needs any more
+    try:
+        erp.update_flow.started()
+    except Exception as e: # pylint: disable=broad-except
+        _log.exception(e)
 
     # NOTE: the activation window of the QtSingleApplication is set only after the ERP login succeeded (see below),
     # so that no file or URL is opened into the still hidden main window while the login is pending
@@ -28228,6 +28214,10 @@ def main() -> None:
         # mandatory ERP login, for the main application as well as for the Viewer
         if not ensure_startup_login(appWindow):
             sys.exit(1)
+
+        # a forced update restarts Artisan into the new version before a roaster is held
+        if not ensure_update(appWindow):
+            sys.exit(0)
 
         # mandatory roaster selection (the Viewer only looks at files, it does not roast)
         if not app.artisanviewerMode and not ensure_roaster(appWindow):

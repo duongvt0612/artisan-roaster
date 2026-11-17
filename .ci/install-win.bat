@@ -29,8 +29,9 @@
 :: the current directory on entry to this script must be the folder above src
 
 setlocal enabledelayedexpansion
-if /i "%APPVEYOR%" NEQ "True" (
-    echo This file is for use on Appveyor CI only.
+:: Appveyor (upstream installer) or CircleCI (portable build of the LVG ERP fork)
+if /i "%APPVEYOR%" NEQ "True" if /i "%CIRCLECI%" NEQ "true" (
+    echo This file is for use on Appveyor or CircleCI only.
     exit /b 1
 )
 set ARTISAN_SPEC=win
