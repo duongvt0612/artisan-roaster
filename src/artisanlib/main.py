@@ -28151,12 +28151,6 @@ def main() -> None:
 
     appWindow = ApplicationWindow(locale=locale_str, artisanviewerFirstStart=artisanviewerFirstStart)
 
-    # this version starts: tell the launcher of the portable build not to roll it back, and remove versions nobody needs any more
-    try:
-        erp.update_flow.started()
-    except Exception as e: # pylint: disable=broad-except
-        _log.exception(e)
-
     # NOTE: the activation window of the QtSingleApplication is set only after the ERP login succeeded (see below),
     # so that no file or URL is opened into the still hidden main window while the login is pending
 
@@ -28210,6 +28204,13 @@ def main() -> None:
                     url = QUrl()
                     url.setUrl(argv_file)
                     app.open_url(url)
+
+        # this version got as far as the login (settings loaded, UI built): tell the launcher of the portable build not to roll it back,
+        # and remove versions nobody needs any more. Not later: closing the login dialog ends Artisan too and is no reason for a rollback
+        try:
+            erp.update_flow.started()
+        except Exception as e: # pylint: disable=broad-except
+            _log.exception(e)
 
         # mandatory ERP login, for the main application as well as for the Viewer
         if not ensure_startup_login(appWindow):

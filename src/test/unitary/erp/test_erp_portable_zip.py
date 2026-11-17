@@ -16,14 +16,17 @@ SRC = Path(__file__).resolve().parents[3]
 SCRIPT = SRC / 'make-portable-zip.py'
 
 
+CONFIG = json.dumps({'apiBaseUrl': 'https://erp.test/api', 'environment': 'production', 'buildCode': 125})
+
+
 @pytest.fixture
 def dist(tmp_path:Path) -> Path:
+    """The layout of a PyInstaller 6 onedir build: artisan.exe at the top, the data files (erp-config.json) in _internal/."""
     d = tmp_path / 'dist' / 'artisan'
     (d / '_internal').mkdir(parents=True)
     (d / 'artisan.exe').write_bytes(b'MZ')
     (d / '_internal' / 'python314.dll').write_bytes(b'dll')
-    (d / 'erp-config.json').write_text(json.dumps({'apiBaseUrl': 'https://erp.test/api', 'environment': 'production', 'buildCode': 125}),
-                                       encoding='utf-8')
+    (d / '_internal' / 'erp-config.json').write_text(CONFIG, encoding='utf-8')
     return d
 
 
@@ -44,7 +47,7 @@ def test_release_zip_and_metadata(tmp_path:Path, dist:Path) -> None:
     assert meta['apkChecksum'] == hashlib.sha256(release.read_bytes()).hexdigest()
     assert meta['isForceUpdate'] is False
     with zipfile.ZipFile(release) as z:
-        assert sorted(z.namelist()) == ['_internal/python314.dll', 'artisan.exe', 'erp-config.json']
+        assert sorted(z.namelist()) == ['_internal/erp-config.json', '_internal/python314.dll', 'artisan.exe']
 
 
 def test_the_updater_installs_what_it_makes(tmp_path:Path, dist:Path) -> None:
@@ -75,6 +78,19 @@ def test_refuses_a_build_that_does_not_know_its_number(tmp_path:Path, dist:Path)
     r = run(tmp_path, dist, '--build-code', '130')
     assert r.returncode == 2
     assert 'buildCode' in r.stderr
+
+
+def test_a_build_with_the_config_next_to_the_exe(tmp_path:Path, dist:Path) -> None:
+    (dist / '_internal' / 'erp-config.json').replace(dist / 'erp-config.json') # contents_directory='.' or an older PyInstaller
+    assert run(tmp_path, dist, '--build-code', '125').returncode == 0
+
+
+def test_refuses_a_build_without_config(tmp_path:Path, dist:Path) -> None:
+    (dist / '_internal' / 'erp-config.json').unlink()
+    r = run(tmp_path, dist, '--build-code', '125')
+    assert r.returncode == 2
+    assert 'erp-config.json not found' in r.stderr
+    assert not (tmp_path / 'out').exists() or not any((tmp_path / 'out').iterdir())
 
 
 def test_needs_the_pyinstaller_output(tmp_path:Path) -> None:

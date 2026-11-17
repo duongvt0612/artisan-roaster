@@ -70,6 +70,8 @@ AppVeyor (CI của Artisan gốc) đã bị xoá khỏi bản fork (`.appveyor.y
 3. Đổi shortcut (Desktop, Start, Startup) trỏ vào `C:\LVG\Artisan\Artisan.exe`. Nếu máy mở file `.alog` bằng Artisan thì đổi liên kết file sang launcher này.
 4. Mở Artisan, đăng nhập như bình thường. Thư mục portable cũ có thể xoá sau khi chạy ổn.
 
+**Máy mới (chưa từng chạy Artisan):** bộ cài NSIS của bản gốc tự chạy *Microsoft Visual C++ Redistributable*; bản portable thì không. Máy đang chạy được bản portable cũ thì nhiều khả năng đã có runtime này. Với máy mới, chạy một lần (quyền admin) `versions\<số bản>\vc_redist.x64.exe` có sẵn trong bộ cài lần đầu, rồi mới mở Artisan. Chưa kiểm trên một máy Windows sạch xem thiếu runtime thì Artisan có chạy được không.
+
 ## 5. Rollback
 
 - Bản mới lỗi nhưng **vẫn khởi động được**: phát hành một bản sửa (số pipeline mới lớn hơn). Xoá bản lỗi trên web chỉ ngăn máy *chưa* tải; máy đã tải vẫn chạy bản đó tới khi có bản mới hơn.

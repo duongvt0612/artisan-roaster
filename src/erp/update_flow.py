@@ -4,7 +4,7 @@
 #
 # ABOUT
 # When and how Artisan updates itself (the mechanics are in updater.py):
-#   * started():  right after the main window exists, before the login: marks this version healthy for the launcher and removes old versions;
+#   * started():  right before the login dialog (settings loaded, UI built): marks this version healthy for the launcher and removes old versions;
 #   * after_login(): asks the ERP for the newest release. A forced one (isForceUpdate) is downloaded right away behind a blocking progress
 #     box and Artisan restarts into it before a roaster is chosen; any other one is downloaded in the background and used at the next start;
 #   * check_now(): the "Check for Updates" menu item.

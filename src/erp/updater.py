@@ -65,6 +65,7 @@ CHECKSUM_ALGORITHM: Final[str] = 'sha256'
 MAX_UNPACKED_BYTES: Final[int] = 3 * 1024 ** 3      # a sane bound for a zip bomb; one onedir build is a few hundred MB
 DOWNLOAD_TIMEOUT: Final[tuple[float, float]] = (10, 60)
 CHUNK: Final[int] = 1024 * 1024
+STAGE_WAIT_SECONDS: Final[float] = 120.0          # a second stage() waits this long for the first one (or a cleanup) to finish
 
 
 class UpdateError(Exception):
@@ -287,7 +288,8 @@ def stage(root:Path, release:Release, progress:Callable[[int, int], None]|None =
           cancelled:Callable[[], bool]|None = None) -> Path:
     """Downloads, checks and unpacks `release` into <root>\\versions\\<versionCode>\\ (nothing to do if it is already there). Only one at a time:
     a second call while one runs raises UpdateError."""
-    if not _busy.acquire(blocking=False): # pylint: disable=consider-using-with # released in the finally below
+    # one at a time (a second call waits; it then finds the release staged), and never while cleanup() removes folders
+    if not _busy.acquire(timeout=STAGE_WAIT_SECONDS): # pylint: disable=consider-using-with # released in the finally below
         raise UpdateError('Đang tải bản cập nhật, vui lòng chờ.')
     try:
         versions = root / VERSIONS_DIR
@@ -315,7 +317,12 @@ def stage(root:Path, release:Release, progress:Callable[[int, int], None]|None =
 def activate(root:Path, release:Release) -> None:
     """Makes the launcher start `release` next time; the version running now becomes the one to fall back to."""
     state = read_current(root)
-    if state['current'] == release.dir_name or state['blocked'] == release.dir_name:
+    if release.dir_name in (state['current'], state['blocked']):
+        return
+    # two downloads that end in the wrong order (start check and menu) must not switch back to the older one
+    current = state['current']
+    if current is not None and current.isdigit() and int(current) > release.version_code and (root / VERSIONS_DIR / current / APP_EXE).is_file():
+        _log.info('update %s not activated: %s is newer and already active', release.version_name, current)
         return
     previous = running_version(root) or state['current']
     if previous == release.dir_name:
@@ -340,24 +347,34 @@ def mark_healthy() -> None:
         _log.warning('could not mark %s healthy: %s', name, e)
 
 
+def _newer_than(name:str, floor:int) -> bool:
+    return name.isdigit() and int(name) > floor
+
+
 def cleanup(root:Path) -> list[str]:
     """Removes every version folder except the current, the fallback and the running one (and leftovers of interrupted downloads).
-    Returns the names removed. Never raises."""
-    if _busy.locked():
+    A complete version newer than the current and the running one is kept too: it may be staged and not yet activated.
+    Holds the download lock while it works (and does nothing if a download runs). Returns the names removed. Never raises."""
+    if not _busy.acquire(blocking=False): # pylint: disable=consider-using-with # released in the finally below
         return []
-    state = read_current(root)
-    keep = {state['current'], state['previous'], running_version(root)} - {None}
     removed:list[str] = []
     try:
-        entries = list((root / VERSIONS_DIR).iterdir())
-    except OSError:
-        return removed
-    for entry in entries:
-        if not entry.is_dir() or entry.name in keep:
-            continue
-        shutil.rmtree(entry, ignore_errors=True)
-        if not entry.exists():
-            removed.append(entry.name)
+        state = read_current(root)
+        running = running_version(root)
+        keep = {state['current'], state['previous'], running} - {None}
+        floor = max((int(n) for n in (state['current'], running) if n is not None and n.isdigit()), default=0)
+        try:
+            entries = list((root / VERSIONS_DIR).iterdir())
+        except OSError:
+            return removed
+        for entry in entries:
+            if not entry.is_dir() or entry.name in keep or (_newer_than(entry.name, floor) and (entry / APP_EXE).is_file()):
+                continue
+            shutil.rmtree(entry, ignore_errors=True)
+            if not entry.exists():
+                removed.append(entry.name)
+    finally:
+        _busy.release()
     if removed:
         _log.info('removed old versions %s', removed)
     return removed

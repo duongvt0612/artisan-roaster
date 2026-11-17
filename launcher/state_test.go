@@ -183,3 +183,30 @@ func TestStartPassesTheEnvironment(t *testing.T) {
 		t.Fatalf("seen %q want %q", data, want)
 	}
 }
+
+// A version whose exe cannot be started at all (not executable here; a broken exe on Windows) is rolled back too.
+func TestRunRollsBackAVersionThatCannotStart(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script stands in for artisan.exe")
+	}
+	root := t.TempDir()
+	out := filepath.Join(root, "ran.txt")
+	version(t, root, "120", "#!/bin/sh\necho 120 > \""+out+"\"\n", true)
+	version(t, root, "125", "", false)
+	if err := os.Chmod(exePath(root, "125"), 0o644); err != nil { // cannot be executed
+		t.Fatal(err)
+	}
+	setState(t, root, State{Current: ptr("125"), Previous: ptr("120")})
+	old := os.Args
+	os.Args = []string{"Artisan.exe"}
+	defer func() { os.Args = old }()
+	if err := run(filepath.Join(root, "Artisan.exe")); err != nil {
+		t.Fatalf("run = %v", err)
+	}
+	if data, _ := os.ReadFile(out); string(data) != "120\n" {
+		t.Fatalf("fallback did not run: %q", data)
+	}
+	if st := readState(root); str(st.Current) != "120" || str(st.Blocked) != "125" {
+		t.Fatalf("state = %+v", st)
+	}
+}

@@ -119,6 +119,33 @@ class TestParseRelease:
         with pytest.raises(updater.UpdateError):
             updater.parse_release({**LATEST, **change})
 
+    @pytest.mark.parametrize('body', [None, 'not json', {'html': 'login page'}])
+    def test_a_200_that_is_not_the_erp_reply_is_an_error(self, monkeypatch:pytest.MonkeyPatch, body:Any) -> None:
+        # e.g. the login page of a captive portal: must not read as "no release" (a forced update would be skipped)
+        class Reply:
+            status_code = 200
+
+            @staticmethod
+            def json() -> Any:
+                if body == 'not json':
+                    raise ValueError
+                return body
+
+        monkeypatch.setattr(client, 'public_get', lambda *_a, **_k: Reply())
+        with pytest.raises(client.ErpAuthError):
+            updater.fetch_latest()
+
+    def test_data_null_means_no_release(self, monkeypatch:pytest.MonkeyPatch) -> None:
+        class Reply:
+            status_code = 200
+
+            @staticmethod
+            def json() -> dict[str, Any]:
+                return {'success': True, 'errors': [], 'errorMessages': [], 'data': None} # what the ERP sends
+
+        monkeypatch.setattr(client, 'public_get', lambda *_a, **_k: Reply())
+        assert updater.fetch_latest() is None
+
     def test_fetch_asks_for_the_artisan_application(self, monkeypatch:pytest.MonkeyPatch) -> None:
         seen:dict[str, Any] = {}
 
@@ -250,6 +277,15 @@ class TestActivate:
         updater.activate(root, release_for(GOOD_ZIP, code=126)) # the fixed release goes through and keeps the block
         assert updater.read_current(root) == {'current': '126', 'previous': '120', 'blocked': '125'}
 
+    def test_an_older_download_never_replaces_a_newer_active_one(self, root:Path, monkeypatch:pytest.MonkeyPatch) -> None:
+        content = GOOD_ZIP
+        serve(monkeypatch, content)
+        updater.stage(root, release_for(content, code=126))
+        updater.activate(root, release_for(content, code=126))
+        updater.stage(root, release_for(content, code=125))
+        updater.activate(root, release_for(content, code=125)) # finished last, but older
+        assert updater.read_current(root)['current'] == '126'
+
     def test_write_is_atomic_and_leaves_no_temp_file(self, root:Path) -> None:
         updater.write_current(root, '125', '120')
         assert sorted(os.listdir(root)) == ['current.json', 'versions']
@@ -271,3 +307,16 @@ class TestHousekeeping:
         removed = updater.cleanup(root)
         assert sorted(removed) == ['100', '126.partial']
         assert sorted(p.name for p in (root / 'versions').iterdir()) == ['110', '120', '125']
+
+    def test_cleanup_keeps_a_newer_staged_version_not_yet_activated(self, root:Path) -> None:
+        (root / 'versions' / '130').mkdir()
+        (root / 'versions' / '130' / 'artisan.exe').write_bytes(b'MZ')
+        (root / 'versions' / '131').mkdir() # newer but incomplete: a leftover
+        assert updater.cleanup(root) == ['131']
+        assert (root / 'versions' / '130' / 'artisan.exe').is_file()
+
+    def test_cleanup_does_nothing_while_a_download_runs(self, root:Path) -> None:
+        (root / 'versions' / '126.partial').mkdir()
+        with updater._busy: # noqa: SLF001
+            assert updater.cleanup(root) == []
+        assert (root / 'versions' / '126.partial').is_dir()

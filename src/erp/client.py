@@ -182,6 +182,10 @@ def data_of(r:requests.Response) -> Any:
         raise ErpAuthError('rate_limited', _error_message(body, 'Too many requests'))
     if not 200 <= r.status_code < 300 or body.get('success') is False:
         raise ErpAuthError('server', _error_message(body, f'HTTP {r.status_code}'))
+    # a 200 that is not the ERP envelope (an HTML page of a captive portal or proxy) is an error, never "nothing there":
+    # the ERP always sends "data", null included
+    if 'data' not in body:
+        raise ErpAuthError('server', 'Unexpected reply from the ERP')
     return body.get('data')
 
 

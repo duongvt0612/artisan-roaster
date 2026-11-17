@@ -83,13 +83,16 @@ def main(argv:list[str]|None = None) -> int:
         print('make-portable-zip: a positive --build-code (or ERP_BUILD_CODE) is needed', file=sys.stderr)
         return 2
     build = int(raw)
-    config = dist / 'erp-config.json'
-    if config.is_file():
-        bundled = json.loads(config.read_text(encoding='utf-8')).get('buildCode')
-        if bundled != build:
-            print(f'make-portable-zip: erp-config.json of the build has buildCode {bundled}, not {build}: the app would not know its version',
-                  file=sys.stderr)
-            return 2
+    # the erp-config.json the app reads at runtime: PyInstaller >= 6 puts the data files into _internal\ (sys._MEIPASS) of a onedir build
+    config = next((p for p in (dist / '_internal' / 'erp-config.json', dist / 'erp-config.json') if p.is_file()), None)
+    if config is None:
+        print(f'make-portable-zip: erp-config.json not found in {dist / "_internal"} or {dist}: the app would not know its ERP nor its version',
+              file=sys.stderr)
+        return 2
+    bundled = json.loads(config.read_text(encoding='utf-8')).get('buildCode')
+    if bundled != build:
+        print(f'make-portable-zip: {config} has buildCode {bundled}, not {build}: the app would not know its version', file=sys.stderr)
+        return 2
     version = args.version or read_version()
     name = f'{version}-{build}'
     out = Path(args.out_dir)

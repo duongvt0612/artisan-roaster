@@ -88,16 +88,19 @@ func run(self string) error {
 	if err != nil {
 		return err
 	}
+	// a version that cannot even be started (broken exe, missing DLL) is rolled back like one that ends before the login
+	var startErr error
 	if err := start(root, self, version, args); err != nil {
-		return fmt.Errorf("không chạy được Artisan %s: %w", version, err)
+		startErr = fmt.Errorf("không chạy được Artisan %s: %w", version, err)
+		log.Printf("%v", startErr)
 	}
 	fallback, err := afterExit(root, version)
 	if err != nil {
 		log.Printf("rollback of %s failed: %v", version, err)
-		return nil
+		return startErr
 	}
 	if fallback == "" {
-		return nil
+		return startErr
 	}
 	log.Printf("%s did not start, rolled back to %s", version, fallback)
 	showMessage("Artisan", fmt.Sprintf("Bản Artisan %s không khởi động được. Đã quay về bản %s.", version, fallback))
